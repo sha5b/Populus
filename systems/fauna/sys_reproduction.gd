@@ -141,17 +141,17 @@ func _spawn_offspring(ecs: EcsWorld, data: Dictionary) -> void:
 		pos.world_pos = dir * (projector.radius + h * projector.height_scale)
 	ecs.add_component(entity, pos)
 
-	var species := ComFaunaSpecies.new()
-	species.species_key = species_key
-	species.diet = sp_data["diet"]
-	species.speed = sp_data["speed"]
+	var new_species := ComFaunaSpecies.new()
+	new_species.species_key = species_key
+	new_species.diet = sp_data["diet"]
+	new_species.speed = sp_data["speed"]
 	for b in sp_data["preferred_biomes"]:
-		species.preferred_biomes.append(b)
-	species.is_aquatic = sp_data.get("is_aquatic", false)
-	species.is_flying = sp_data.get("is_flying", false)
-	species.max_age = sp_data["max_age"]
-	species.age = 0.0
-	ecs.add_component(entity, species)
+		new_species.preferred_biomes.append(b)
+	new_species.is_aquatic = sp_data.get("is_aquatic", false)
+	new_species.is_flying = sp_data.get("is_flying", false)
+	new_species.max_age = sp_data["max_age"]
+	new_species.age = 0.0
+	ecs.add_component(entity, new_species)
 
 	var health := ComHealth.new()
 	health.max_hp = sp_data["hp"]

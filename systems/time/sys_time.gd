@@ -12,6 +12,7 @@ var _prev_day: int = 0
 var _prev_season: int = DefEnums.Season.SPRING
 
 var sun_light: DirectionalLight3D = null
+var day_night_energy: float = 1.2
 
 
 func update(world: Node, delta: float) -> void:
@@ -59,8 +60,8 @@ func _update_day_night() -> void:
 	elif hour_frac > 19.0 and hour_frac < 20.0:
 		day_t = 1.0 - (hour_frac - 19.0)
 
-	var energy := lerpf(0.15, 1.2, day_t)
-	sun_light.light_energy = energy
+	day_night_energy = lerpf(0.15, 1.2, day_t)
+	sun_light.light_energy = day_night_energy
 
 	# Sunrise/sunset warm tint
 	if hour_frac > 5.5 and hour_frac < 7.5:

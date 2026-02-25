@@ -5,14 +5,14 @@ var grid: TorusGrid = null
 var time_system: SysTime = null
 var weather_system: SysWeather = null
 
-var base_erosion_rate: float = 0.3
-var erosion_rate: float = 0.3
-var deposition_rate: float = 0.3
-var friction: float = 0.8
+var base_erosion_rate: float = 0.08
+var erosion_rate: float = 0.08
+var deposition_rate: float = 0.15
+var friction: float = 0.85
 var speed_factor: float = 1.0
 var max_iterations: int = 64
-var base_particles: int = 200
-var particles_per_batch: int = 200
+var base_particles: int = 100
+var particles_per_batch: int = 100
 
 var _game_hours_acc: float = 0.0
 var _run_interval_hours: float = 1.0
@@ -25,7 +25,7 @@ func setup(g: TorusGrid, ts: SysTime, ws: SysWeather = null) -> void:
 	weather_system = ws
 
 
-const PARTICLES_PER_CHUNK := 10
+const PARTICLES_PER_CHUNK := 4
 
 
 func update(_world: Node, delta: float) -> void:
@@ -121,18 +121,27 @@ func _apply_weather_modifiers() -> void:
 
 	var state := weather_system.current_state
 	match state:
-		DefEnums.WeatherState.RAIN:
-			erosion_rate = base_erosion_rate * 2.0
-			particles_per_batch = int(base_particles * 1.5)
+		DefEnums.WeatherState.HURRICANE:
+			erosion_rate = base_erosion_rate * 6.0
+			particles_per_batch = base_particles * 4
 		DefEnums.WeatherState.STORM:
 			erosion_rate = base_erosion_rate * 4.0
 			particles_per_batch = base_particles * 3
+		DefEnums.WeatherState.RAIN:
+			erosion_rate = base_erosion_rate * 2.0
+			particles_per_batch = int(base_particles * 1.5)
+		DefEnums.WeatherState.BLIZZARD:
+			erosion_rate = base_erosion_rate * 1.5
+			particles_per_batch = base_particles
 		DefEnums.WeatherState.FOG:
 			erosion_rate = base_erosion_rate * 0.5
 			particles_per_batch = base_particles
 		DefEnums.WeatherState.SNOW:
 			erosion_rate = base_erosion_rate * 0.2
 			particles_per_batch = int(base_particles * 0.5)
+		DefEnums.WeatherState.HEATWAVE:
+			erosion_rate = base_erosion_rate * 0.1
+			particles_per_batch = int(base_particles * 0.3)
 		_:
 			erosion_rate = base_erosion_rate * 0.3
 			particles_per_batch = int(base_particles * 0.5)

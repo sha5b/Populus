@@ -12,7 +12,6 @@ var weirdness_map: PackedFloat32Array
 var _last_heights: PackedFloat32Array
 var _timer: float = 0.0
 var _chunk_offset: int = 0
-var _changed_count: int = 0
 
 const TICK_INTERVAL := 2.0
 const CHUNK_SIZE := 1024
@@ -44,7 +43,7 @@ func _snapshot_heights() -> void:
 	_last_heights.resize(total)
 	var w := grid.width
 	for i in range(total):
-		_last_heights[i] = grid.get_height(i % w, i / w)
+		_last_heights[i] = grid.get_height(i % w, int(i / w))
 
 
 func update(_world: Node, delta: float) -> void:
@@ -61,11 +60,11 @@ func _reassign_chunk() -> void:
 	var has_noise := continentalness_map.size() == total
 	var start := _chunk_offset
 	var end_idx := mini(start + CHUNK_SIZE, total)
-	var changed := 0
+	var tiles_changed := 0
 
 	for i in range(start, end_idx):
 		var x := i % w
-		var y := i / w
+		var y := int(i / w)
 		var current_h := grid.get_height(x, y)
 		var delta_h := absf(current_h - _last_heights[i])
 
@@ -83,9 +82,9 @@ func _reassign_chunk() -> void:
 		if new_biome != biome_map[i]:
 			biome_map[i] = new_biome
 			grid.set_biome(x, y, new_biome)
-			changed += 1
+			tiles_changed += 1
 
 	_chunk_offset = end_idx if end_idx < total else 0
 
-	if changed > 0:
-		print("Biome reassignment chunk: %d tiles changed" % changed)
+	if tiles_changed > 0:
+		print("Biome reassignment chunk: %d tiles changed" % tiles_changed)

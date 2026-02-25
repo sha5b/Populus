@@ -37,7 +37,8 @@ func update(_world: Node, delta: float) -> void:
 func _try_lightning_ignition(ecs: EcsWorld) -> void:
 	if weather_system == null:
 		return
-	if weather_system.current_state != DefEnums.WeatherState.STORM:
+	var can_ignite := weather_system.current_state in [DefEnums.WeatherState.STORM, DefEnums.WeatherState.HURRICANE]
+	if not can_ignite:
 		return
 
 	var flammables := ecs.get_components("ComFlammable")
@@ -61,7 +62,7 @@ func _try_lightning_ignition(ecs: EcsWorld) -> void:
 func _process_burning(ecs: EcsWorld) -> void:
 	var is_raining := false
 	if weather_system:
-		is_raining = weather_system.current_state == DefEnums.WeatherState.RAIN or weather_system.current_state == DefEnums.WeatherState.STORM
+		is_raining = weather_system.current_state in [DefEnums.WeatherState.RAIN, DefEnums.WeatherState.STORM, DefEnums.WeatherState.SNOW, DefEnums.WeatherState.BLIZZARD, DefEnums.WeatherState.HURRICANE]
 
 	var dead_entities: Array[int] = []
 	var flammables := ecs.get_components("ComFlammable")

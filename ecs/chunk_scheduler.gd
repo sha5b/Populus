@@ -95,7 +95,7 @@ func _update_priority_scores() -> void:
 func _select_chunks(count: int) -> Array[int]:
 	var selected: Array[int] = []
 
-	var rolling_start := _tick_index
+	var _rolling_start := _tick_index
 	for _i in range(count):
 		selected.append(_tick_index)
 		_tick_index = (_tick_index + 1) % _total_chunks

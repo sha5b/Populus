@@ -80,8 +80,14 @@ func _apply_weather_modifiers() -> void:
 
 	var state := weather_system.current_state
 	match state:
+		DefEnums.WeatherState.HURRICANE:
+			wind_erosion_rate = base_wind_erosion_rate * 8.0
+		DefEnums.WeatherState.BLIZZARD:
+			wind_erosion_rate = base_wind_erosion_rate * 5.0
 		DefEnums.WeatherState.STORM:
 			wind_erosion_rate = base_wind_erosion_rate * 3.0
+		DefEnums.WeatherState.HEATWAVE:
+			wind_erosion_rate = base_wind_erosion_rate * 2.0
 		DefEnums.WeatherState.RAIN:
 			wind_erosion_rate = base_wind_erosion_rate * 0.5
 		_:

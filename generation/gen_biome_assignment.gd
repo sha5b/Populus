@@ -1,6 +1,27 @@
 class_name GenBiomeAssignment
 
 
+static var _boundary_noise: FastNoiseLite
+static var _boundary_noise2: FastNoiseLite
+
+
+static func _ensure_boundary_noise() -> void:
+	if _boundary_noise != null:
+		return
+	_boundary_noise = FastNoiseLite.new()
+	_boundary_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_boundary_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_boundary_noise.fractal_octaves = 3
+	_boundary_noise.frequency = 0.05
+	_boundary_noise.seed = 77777
+	_boundary_noise2 = FastNoiseLite.new()
+	_boundary_noise2.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_boundary_noise2.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_boundary_noise2.fractal_octaves = 2
+	_boundary_noise2.frequency = 0.08
+	_boundary_noise2.seed = 88888
+
+
 static func assign(
 	grid: TorusGrid,
 	temperature_map: PackedFloat32Array,
@@ -10,6 +31,7 @@ static func assign(
 	erosion_map: PackedFloat32Array = PackedFloat32Array(),
 	weirdness_map: PackedFloat32Array = PackedFloat32Array()
 ) -> void:
+	_ensure_boundary_noise()
 	var w := grid.width
 	var h := grid.height
 	var total := w * h
@@ -22,6 +44,13 @@ static func assign(
 			var height := grid.get_tile_center_height(x, y)
 			var temp := temperature_map[idx]
 			var moist := moisture_map[idx]
+
+			# Perturb temp/moisture at biome boundaries for organic edges
+			var t_perturb := _boundary_noise.get_noise_2d(float(x), float(y)) * 0.08
+			var m_perturb := _boundary_noise2.get_noise_2d(float(x), float(y)) * 0.08
+			temp = clampf(temp + t_perturb, 0.0, 1.0)
+			moist = clampf(moist + m_perturb, 0.0, 1.0)
+
 			var cont := continentalness_map[idx] if has_noise_maps else 0.5
 			var ero := erosion_map[idx] if has_noise_maps else 0.5
 			var weird := weirdness_map[idx] if has_noise_maps else 0.0

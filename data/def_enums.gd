@@ -137,6 +137,9 @@ enum WeatherState {
 	STORM,
 	SNOW,
 	FOG,
+	BLIZZARD,
+	HURRICANE,
+	HEATWAVE,
 }
 
 enum SeedMethod {

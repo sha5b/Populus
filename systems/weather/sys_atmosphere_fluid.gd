@@ -6,7 +6,7 @@ var wind_system: SysWind = null
 var weather_system: SysWeather = null
 
 var _sim_accumulator: float = 0.0
-const SIM_INTERVAL := 3.0
+const SIM_INTERVAL := 2.0
 
 var _adv_moisture: PackedFloat32Array
 var _adv_temp: PackedFloat32Array
@@ -32,6 +32,9 @@ const MOISTURE_INJECT := {
 	3: 0.04,    # STORM
 	4: 0.005,   # SNOW
 	5: 0.01,    # FOG
+	6: 0.06,    # BLIZZARD
+	7: 0.08,    # HURRICANE
+	8: -0.01,   # HEATWAVE (dries atmosphere)
 }
 
 
@@ -91,7 +94,7 @@ func _mark_changed_chunks() -> void:
 	for face in range(AtmosphereGrid.NUM_FACES):
 		for cv in range(cpf):
 			for cu in range(cpf):
-				var changed := false
+				var chunk_changed := false
 				var fu_start := cu * cs
 				var fv_start := cv * cs
 				for fv in range(fv_start, fv_start + cs):
@@ -99,13 +102,13 @@ func _mark_changed_chunks() -> void:
 						for alt in range(AtmosphereGrid.ALT_RES):
 							var i := atmo_grid.idx(face, fu, fv, alt)
 							if absf(atmo_grid.cloud_density[i] - _old_density[i]) > threshold:
-								changed = true
+								chunk_changed = true
 								break
-						if changed:
+						if chunk_changed:
 							break
-					if changed:
+					if chunk_changed:
 						break
-				if changed:
+				if chunk_changed:
 					atmo_grid.mark_chunk_dirty_by_idx(atmo_grid.chunk_idx(face, cu, cv))
 
 

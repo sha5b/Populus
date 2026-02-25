@@ -29,6 +29,7 @@ var biome_reassign_system: SysBiomeReassign
 var water_grid: WaterGrid
 var water_mesh: PlanetWaterMesh
 var water_dynamics: SysWaterDynamics
+var heightmap_gen: GenHeightmap
 var _continentalness_map: PackedFloat32Array
 var _erosion_noise_map: PackedFloat32Array
 var _weirdness_map: PackedFloat32Array
@@ -111,6 +112,7 @@ func _build_planet() -> void:
 	var terrain_shader := load("res://shaders/terrain.gdshader") as Shader
 	var terrain_mat := ShaderMaterial.new()
 	terrain_mat.shader = terrain_shader
+	terrain_mat.set_shader_parameter("planet_radius", GameConfig.PLANET_RADIUS)
 	planet_mesh.material_override = terrain_mat
 
 	planet_mesh.build_mesh()
@@ -132,6 +134,7 @@ func _add_water_sphere() -> void:
 	var water_mat := ShaderMaterial.new()
 	water_mat.shader = water_shader
 	water_mat.render_priority = 1
+	water_mat.set_shader_parameter("planet_radius", GameConfig.PLANET_RADIUS)
 	water_mesh.material_override = water_mat
 
 	add_child(water_mesh)
@@ -205,7 +208,7 @@ func _add_camera_and_light() -> void:
 
 
 func _generate_terrain() -> void:
-	var heightmap_gen := GenHeightmap.new(GameConfig.WORLD_SEED)
+	heightmap_gen = GenHeightmap.new(GameConfig.WORLD_SEED)
 	heightmap_gen.generate(grid, projector)
 
 	_continentalness_map = heightmap_gen.continentalness_map
@@ -266,6 +269,7 @@ func _generate_terrain() -> void:
 	add_child(fauna_renderer)
 
 
+
 func _register_systems() -> void:
 	var sun := get_node("SunLight") as DirectionalLight3D
 
@@ -304,6 +308,10 @@ func _register_systems() -> void:
 	var wind_ero := SysWindErosion.new()
 	wind_ero.setup(grid, wind_system, moisture_map, weather_system)
 	world.add_system(wind_ero)
+
+	var tectonic := SysTectonicUplift.new()
+	tectonic.setup(grid, heightmap_gen, projector)
+	world.add_system(tectonic)
 
 	river_system.time_system = time_system
 	world.add_system(river_system)
@@ -404,14 +412,14 @@ var _mesh_rebuild_interval: float = 30.0
 func _prebake_erosion(moist: PackedFloat32Array) -> void:
 	var prebake_hydraulic := SysHydraulicErosion.new()
 	prebake_hydraulic.grid = grid
-	prebake_hydraulic.erosion_rate = 0.5
-	prebake_hydraulic.deposition_rate = 0.25
-	prebake_hydraulic.particles_per_batch = 500
-	prebake_hydraulic.max_iterations = 80
+	prebake_hydraulic.erosion_rate = 0.12
+	prebake_hydraulic.deposition_rate = 0.15
+	prebake_hydraulic.particles_per_batch = 200
+	prebake_hydraulic.max_iterations = 50
 
 	var prebake_thermal := SysThermalErosion.new()
 	prebake_thermal.grid = grid
-	prebake_thermal.thermal_rate = 0.03
+	prebake_thermal.thermal_rate = 0.01
 
 	var prebake_coastal := SysCoastalErosion.new()
 	prebake_coastal.grid = grid
@@ -419,11 +427,11 @@ func _prebake_erosion(moist: PackedFloat32Array) -> void:
 	var prebake_wind := SysWindErosion.new()
 	prebake_wind.grid = grid
 	prebake_wind.moisture_map = moist
-	prebake_wind.wind_erosion_rate = 0.002
+	prebake_wind.wind_erosion_rate = 0.001
 
-	const PREBAKE_ITERATIONS := 4
+	const PREBAKE_ITERATIONS := 2
 	for i in range(PREBAKE_ITERATIONS):
-		for _p in range(300):
+		for _p in range(150):
 			var sx := randi() % grid.width
 			var sy := randi() % grid.height
 			if grid.get_height(sx, sy) > GameConfig.SEA_LEVEL:

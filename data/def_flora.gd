@@ -191,6 +191,149 @@ const SPECIES_DATA: Dictionary = {
 		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 3, "seed_interval": 30.0,
 		"water_need": 0.9, "light_need": 0.3, "flammability": 0.1,
 		"mesh_color": Color(0.4, 0.5, 0.25), "mesh_height": 0.4,
+		"is_aquatic": false,
+	},
+	"kelp": {
+		"name": "Kelp", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 1,
+		"growth_rate": 0.04, "max_age": 80.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 4, "seed_interval": 20.0,
+		"water_need": 1.0, "light_need": 0.3, "flammability": 0.0,
+		"mesh_color": Color(0.15, 0.4, 0.12), "mesh_height": 0.6,
+		"is_aquatic": true, "min_depth": 0.02, "max_depth": 0.2,
+	},
+	"giant_kelp": {
+		"name": "Giant Kelp", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 2,
+		"growth_rate": 0.06, "max_age": 60.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 3, "seed_interval": 25.0,
+		"water_need": 1.0, "light_need": 0.4, "flammability": 0.0,
+		"mesh_color": Color(0.1, 0.35, 0.08), "mesh_height": 0.9,
+		"is_aquatic": true, "min_depth": 0.03, "max_depth": 0.15,
+	},
+	"coral": {
+		"name": "Coral", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 0,
+		"growth_rate": 0.002, "max_age": 2000.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 2, "seed_interval": 200.0,
+		"water_need": 1.0, "light_need": 0.5, "flammability": 0.0,
+		"mesh_color": Color(0.85, 0.45, 0.3), "mesh_height": 0.25,
+		"is_aquatic": true, "min_depth": 0.01, "max_depth": 0.1,
+	},
+	"brain_coral": {
+		"name": "Brain Coral", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 0,
+		"growth_rate": 0.001, "max_age": 3000.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 1, "seed_interval": 300.0,
+		"water_need": 1.0, "light_need": 0.6, "flammability": 0.0,
+		"mesh_color": Color(0.7, 0.55, 0.65), "mesh_height": 0.2,
+		"is_aquatic": true, "min_depth": 0.01, "max_depth": 0.08,
+	},
+	"sea_anemone": {
+		"name": "Sea Anemone", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 0,
+		"growth_rate": 0.01, "max_age": 500.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 2, "seed_interval": 100.0,
+		"water_need": 1.0, "light_need": 0.3, "flammability": 0.0,
+		"mesh_color": Color(0.9, 0.3, 0.5), "mesh_height": 0.15,
+		"is_aquatic": true, "min_depth": 0.005, "max_depth": 0.12,
+	},
+	"seaweed": {
+		"name": "Seaweed", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 1,
+		"growth_rate": 0.05, "max_age": 40.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 5, "seed_interval": 15.0,
+		"water_need": 1.0, "light_need": 0.2, "flammability": 0.0,
+		"mesh_color": Color(0.2, 0.45, 0.15), "mesh_height": 0.3,
+		"is_aquatic": true, "min_depth": 0.005, "max_depth": 0.25,
+	},
+	"sea_sponge": {
+		"name": "Sea Sponge", "flora_type": FloraType.AQUATIC,
+		"preferred_biomes": [DefEnums.BiomeType.OCEAN],
+		"wood_yield": 0, "food_yield": 0,
+		"growth_rate": 0.003, "max_age": 1500.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 1, "seed_interval": 250.0,
+		"water_need": 1.0, "light_need": 0.1, "flammability": 0.0,
+		"mesh_color": Color(0.75, 0.65, 0.2), "mesh_height": 0.2,
+		"is_aquatic": true, "min_depth": 0.02, "max_depth": 0.3,
+	},
+	"bamboo": {
+		"name": "Bamboo", "flora_type": FloraType.TREE,
+		"preferred_biomes": [DefEnums.BiomeType.TROPICAL_FOREST, DefEnums.BiomeType.SWAMP],
+		"wood_yield": 4, "food_yield": 0,
+		"growth_rate": 0.03, "max_age": 120.0,
+		"seed_method": DefEnums.SeedMethod.WIND, "seed_range": 3, "seed_interval": 20.0,
+		"water_need": 0.65, "light_need": 0.5, "flammability": 0.35,
+		"mesh_color": Color(0.25, 0.55, 0.15), "mesh_height": 0.9,
+	},
+	"banana": {
+		"name": "Banana Plant", "flora_type": FloraType.BUSH,
+		"preferred_biomes": [DefEnums.BiomeType.TROPICAL_FOREST],
+		"wood_yield": 0, "food_yield": 6,
+		"growth_rate": 0.02, "max_age": 80.0,
+		"seed_method": DefEnums.SeedMethod.ANIMAL, "seed_range": 5, "seed_interval": 35.0,
+		"water_need": 0.7, "light_need": 0.6, "flammability": 0.25,
+		"mesh_color": Color(0.2, 0.50, 0.08), "mesh_height": 0.6,
+	},
+	"maple": {
+		"name": "Maple", "flora_type": FloraType.TREE,
+		"preferred_biomes": [DefEnums.BiomeType.TEMPERATE_FOREST, DefEnums.BiomeType.BOREAL_FOREST],
+		"wood_yield": 9, "food_yield": 1,
+		"growth_rate": 0.009, "max_age": 450.0,
+		"seed_method": DefEnums.SeedMethod.WIND, "seed_range": 6, "seed_interval": 50.0,
+		"water_need": 0.35, "light_need": 0.5, "flammability": 0.4,
+		"mesh_color": Color(0.30, 0.48, 0.18), "mesh_height": 1.1,
+	},
+	"willow": {
+		"name": "Willow", "flora_type": FloraType.TREE,
+		"preferred_biomes": [DefEnums.BiomeType.SWAMP, DefEnums.BiomeType.TEMPERATE_FOREST],
+		"wood_yield": 5, "food_yield": 0,
+		"growth_rate": 0.012, "max_age": 300.0,
+		"seed_method": DefEnums.SeedMethod.WATER, "seed_range": 4, "seed_interval": 45.0,
+		"water_need": 0.8, "light_need": 0.4, "flammability": 0.15,
+		"mesh_color": Color(0.28, 0.50, 0.20), "mesh_height": 0.9,
+	},
+	"arctic_willow": {
+		"name": "Arctic Willow", "flora_type": FloraType.BUSH,
+		"preferred_biomes": [DefEnums.BiomeType.TUNDRA, DefEnums.BiomeType.SNOW_ICE],
+		"wood_yield": 1, "food_yield": 0,
+		"growth_rate": 0.003, "max_age": 400.0,
+		"seed_method": DefEnums.SeedMethod.WIND, "seed_range": 2, "seed_interval": 120.0,
+		"water_need": 0.15, "light_need": 0.3, "flammability": 0.1,
+		"mesh_color": Color(0.45, 0.50, 0.35), "mesh_height": 0.15,
+	},
+	"crowberry": {
+		"name": "Crowberry", "flora_type": FloraType.GROUND_COVER,
+		"preferred_biomes": [DefEnums.BiomeType.TUNDRA, DefEnums.BiomeType.TAIGA],
+		"wood_yield": 0, "food_yield": 2,
+		"growth_rate": 0.005, "max_age": 200.0,
+		"seed_method": DefEnums.SeedMethod.ANIMAL, "seed_range": 3, "seed_interval": 60.0,
+		"water_need": 0.2, "light_need": 0.3, "flammability": 0.1,
+		"mesh_color": Color(0.3, 0.38, 0.25), "mesh_height": 0.08,
+	},
+	"clover": {
+		"name": "Clover", "flora_type": FloraType.GROUND_COVER,
+		"preferred_biomes": [DefEnums.BiomeType.GRASSLAND, DefEnums.BiomeType.TEMPERATE_FOREST],
+		"wood_yield": 0, "food_yield": 1,
+		"growth_rate": 0.06, "max_age": 20.0,
+		"seed_method": DefEnums.SeedMethod.WIND, "seed_range": 5, "seed_interval": 10.0,
+		"water_need": 0.3, "light_need": 0.5, "flammability": 0.5,
+		"mesh_color": Color(0.2, 0.52, 0.15), "mesh_height": 0.06,
+	},
+	"sunflower": {
+		"name": "Sunflower", "flora_type": FloraType.GRASS,
+		"preferred_biomes": [DefEnums.BiomeType.GRASSLAND, DefEnums.BiomeType.SAVANNA],
+		"wood_yield": 0, "food_yield": 2,
+		"growth_rate": 0.05, "max_age": 25.0,
+		"seed_method": DefEnums.SeedMethod.ANIMAL, "seed_range": 6, "seed_interval": 12.0,
+		"water_need": 0.3, "light_need": 0.8, "flammability": 0.55,
+		"mesh_color": Color(0.75, 0.65, 0.15), "mesh_height": 0.2,
 	},
 	"mushroom": {
 		"name": "Mushroom", "flora_type": FloraType.GROUND_COVER,
@@ -235,5 +378,18 @@ static func get_species_for_biome(biome: int) -> Array[String]:
 	var result: Array[String] = []
 	for key in SPECIES_DATA:
 		if biome in SPECIES_DATA[key]["preferred_biomes"]:
-			result.append(key)
+			if not SPECIES_DATA[key].get("is_aquatic", false):
+				result.append(key)
+	return result
+
+
+static func get_aquatic_species_for_depth(depth: float) -> Array[String]:
+	var result: Array[String] = []
+	for key in SPECIES_DATA:
+		var data: Dictionary = SPECIES_DATA[key]
+		if data.get("is_aquatic", false):
+			var min_d: float = data.get("min_depth", 0.0)
+			var max_d: float = data.get("max_depth", 1.0)
+			if depth >= min_d and depth <= max_d:
+				result.append(key)
 	return result

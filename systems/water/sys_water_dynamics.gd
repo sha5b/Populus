@@ -24,9 +24,15 @@ const RAIN_RATE := 0.0003
 const STORM_RAIN_RATE := 0.001
 const EVAPORATION_BASE := 0.00005
 const EVAPORATION_HEAT_FACTOR := 0.0001
-const WAVE_DECAY := 0.85
-const STORM_WAVE_BOOST := 0.003
-const WIND_CURRENT_STRENGTH := 0.005
+const WAVE_DECAY := 0.92
+const STORM_WAVE_BOOST := 0.01
+const HURRICANE_WAVE_BOOST := 0.04
+const BLIZZARD_WAVE_BOOST := 0.015
+const WIND_CURRENT_STRENGTH := 0.012
+const HURRICANE_CURRENT_STRENGTH := 0.05
+const HURRICANE_RAIN_RATE := 0.003
+const BLIZZARD_RAIN_RATE := 0.0005
+const HEATWAVE_EVAP_MULT := 4.0
 const THERMAL_CURRENT_STRENGTH := 0.003
 const CORIOLIS_FACTOR := 0.01
 const RIVER_INJECT_RATE := 0.002
@@ -71,11 +77,15 @@ func _process_chunk() -> void:
 	var total := water.width * water.height
 	var end_idx := mini(_chunk_offset + CHUNK_SIZE, total)
 
-	var is_raining := false
-	var is_storm := false
+	var state := DefEnums.WeatherState.CLEAR
 	if weather_system:
-		is_raining = weather_system.current_state == DefEnums.WeatherState.RAIN or weather_system.current_state == DefEnums.WeatherState.STORM
-		is_storm = weather_system.current_state == DefEnums.WeatherState.STORM
+		state = weather_system.current_state
+
+	var is_raining := state in [DefEnums.WeatherState.RAIN, DefEnums.WeatherState.STORM, DefEnums.WeatherState.HURRICANE, DefEnums.WeatherState.BLIZZARD]
+	var is_storm := state in [DefEnums.WeatherState.STORM, DefEnums.WeatherState.HURRICANE, DefEnums.WeatherState.BLIZZARD]
+	var is_hurricane := state == DefEnums.WeatherState.HURRICANE
+	var is_blizzard := state == DefEnums.WeatherState.BLIZZARD
+	var is_heatwave := state == DefEnums.WeatherState.HEATWAVE
 
 	var wind_dir := Vector2.ZERO
 	var wind_speed := 0.0
@@ -86,36 +96,50 @@ func _process_chunk() -> void:
 	for i in range(_chunk_offset, end_idx):
 		var x := i % water.width
 		var y := i / water.width
-		_simulate_tile(x, y, i, is_raining, is_storm, wind_dir, wind_speed)
+		_simulate_tile_full(x, y, i, is_raining, is_storm, is_hurricane, is_blizzard, is_heatwave, wind_dir, wind_speed)
 
 	_chunk_offset = end_idx if end_idx < total else 0
 
 
-func _simulate_tile(x: int, y: int, idx: int, is_raining: bool, is_storm: bool, wind_dir: Vector2, wind_speed: float) -> void:
+func _simulate_tile_full(x: int, y: int, idx: int, is_raining: bool, is_storm: bool, is_hurricane: bool, is_blizzard: bool, is_heatwave: bool, wind_dir: Vector2, wind_speed: float) -> void:
 	var depth := water.water_depth[idx]
 	var terrain_h := grid.get_height(x, y)
 	var surface_h := terrain_h + depth
 
-	# --- Weather: rain adds water, evaporation removes ---
+	# --- Weather: rain/snow adds water, evaporation removes ---
 	if is_raining:
-		var rate := STORM_RAIN_RATE if is_storm else RAIN_RATE
+		var rate := RAIN_RATE
+		if is_hurricane:
+			rate = HURRICANE_RAIN_RATE
+		elif is_storm:
+			rate = STORM_RAIN_RATE
+		elif is_blizzard:
+			rate = BLIZZARD_RAIN_RATE
 		depth += rate
+
 	var temp := water.water_temp[idx]
 	var evap := EVAPORATION_BASE + temp * EVAPORATION_HEAT_FACTOR
+	if is_heatwave:
+		evap *= HEATWAVE_EVAP_MULT
 	depth = maxf(depth - evap, 0.0)
 
-	# --- River injection: rivers continuously feed water ---
+	# Heatwave heats water, blizzard cools it
+	if is_heatwave:
+		water.water_temp[idx] = minf(temp + 0.002, 1.0)
+	elif is_blizzard:
+		water.water_temp[idx] = maxf(temp - 0.003, 0.0)
+
+	# --- River injection ---
 	if river_system and river_system.river_map.size() > idx:
 		var river_strength := river_system.river_map[idx]
 		if river_strength > 0.0:
 			depth += RIVER_INJECT_RATE * river_strength
 
-	# --- Shallow water flow: water flows downhill ---
+	# --- Shallow water flow ---
 	if depth > MIN_DEPTH:
 		var flow_x := water.flow_vx[idx]
 		var flow_y := water.flow_vy[idx]
 
-		# Gravity-driven flow from height gradient
 		var h_l := grid.get_height(grid.wrap_x(x - 1), y) + water.water_depth[water.get_index(x - 1, y)]
 		var h_r := grid.get_height(grid.wrap_x(x + 1), y) + water.water_depth[water.get_index(x + 1, y)]
 		var h_u := grid.get_height(x, grid.wrap_y(y - 1)) + water.water_depth[water.get_index(x, y - 1)]
@@ -127,21 +151,31 @@ func _simulate_tile(x: int, y: int, idx: int, is_raining: bool, is_storm: bool, 
 		flow_x += grad_x * GRAVITY
 		flow_y += grad_y * GRAVITY
 
-		# Wind-driven surface current (only deep water)
+		# Wind-driven surface current
 		if depth > 0.05:
-			flow_x += wind_dir.x * wind_speed * WIND_CURRENT_STRENGTH
-			flow_y += wind_dir.y * wind_speed * WIND_CURRENT_STRENGTH
+			var wind_strength := WIND_CURRENT_STRENGTH
+			if is_hurricane:
+				wind_strength = HURRICANE_CURRENT_STRENGTH
+			elif is_blizzard:
+				wind_strength = WIND_CURRENT_STRENGTH * 2.5
+			flow_x += wind_dir.x * wind_speed * wind_strength
+			flow_y += wind_dir.y * wind_speed * wind_strength
 
-		# Coriolis deflection (latitude-dependent)
+		# Coriolis deflection
 		var lat_factor := (float(y) / float(water.height) - 0.5) * 2.0
 		var coriolis_x := -flow_y * CORIOLIS_FACTOR * lat_factor
 		var coriolis_y := flow_x * CORIOLIS_FACTOR * lat_factor
 		flow_x += coriolis_x
 		flow_y += coriolis_y
 
-		# Damping
-		flow_x *= FLOW_DAMPING
-		flow_y *= FLOW_DAMPING
+		# Damping (less during extreme weather = more chaotic water)
+		var damping := FLOW_DAMPING
+		if is_hurricane:
+			damping = 0.96
+		elif is_blizzard:
+			damping = 0.94
+		flow_x *= damping
+		flow_y *= damping
 
 		# Transfer water to neighbors
 		var transfer := minf(depth * 0.25, 0.01)
@@ -165,8 +199,17 @@ func _simulate_tile(x: int, y: int, idx: int, is_raining: bool, is_storm: bool, 
 
 	# --- Waves ---
 	var wave := water.wave_height[idx]
-	if is_storm and depth > 0.05:
-		wave += STORM_WAVE_BOOST * (0.5 + randf() * 0.5)
+	if depth > 0.05:
+		# Ambient ocean waves — always present, driven by wind
+		var ambient := wind_speed * 0.002 + 0.001
+		wave += ambient * (0.5 + randf() * 0.5)
+		# Storm amplification
+		if is_hurricane:
+			wave += HURRICANE_WAVE_BOOST * (0.5 + randf() * 0.5)
+		elif is_blizzard:
+			wave += BLIZZARD_WAVE_BOOST * (0.5 + randf() * 0.5)
+		elif is_storm:
+			wave += STORM_WAVE_BOOST * (0.5 + randf() * 0.5)
 	wave *= WAVE_DECAY
 	water.wave_height[idx] = wave
 
@@ -188,7 +231,7 @@ func _update_ocean_currents() -> void:
 	for _i in range(chunk_size):
 		var idx := (offset + _i) % (w * h)
 		var x := idx % w
-		var y := idx / w
+		var y := int(idx / w)
 		var depth := water.water_depth[idx]
 
 		if depth < 0.05:

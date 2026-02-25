@@ -168,7 +168,6 @@ static func _march_cube_cached(
 			norms.append(n2)
 
 		var avg_density := (corners[0] + corners[1] + corners[2] + corners[3] + corners[4] + corners[5] + corners[6] + corners[7]) / 8.0
-		var up_dot := n0.dot(n0)
 		var brightness := 0.7 + absf(winding.normalized().dot(n0)) * 0.3
 		brightness = clampf(brightness, 0.5, 1.0)
 		var grey := lerpf(0.9, 0.55, avg_density)

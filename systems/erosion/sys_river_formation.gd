@@ -7,13 +7,13 @@ var river_map: PackedFloat32Array
 var flow_map: PackedFloat32Array
 var time_system: SysTime = null
 
-const RIVER_THRESHOLD := 8.0
-const CANYON_THRESHOLD := 40.0
-const BASE_CARVE_RATE := 0.015
-const CANYON_CARVE_RATE := 0.04
+const RIVER_THRESHOLD := 25.0
+const CANYON_THRESHOLD := 80.0
+const BASE_CARVE_RATE := 0.006
+const CANYON_CARVE_RATE := 0.015
 const CARVE_PASSES := 3
-const RIVER_MOISTURE_BOOST := 0.25
-const RIVER_MOISTURE_RADIUS := 4
+const RIVER_MOISTURE_BOOST := 0.10
+const RIVER_MOISTURE_RADIUS := 2
 
 var _last_season: int = -1
 var _river_count: int = 0
@@ -61,7 +61,7 @@ func _recalculate_rivers() -> void:
 	flow_dir.fill(-1)
 
 	for i in range(total):
-		var ht := grid.get_height(i % w, i / w)
+		var _ht := grid.get_height(i % w, int(i / w))
 		flow_accumulation[i] = 1.0 + maxf(moisture_map[i] if i < moisture_map.size() else 0.5, 0.0)
 
 	var sorted_indices: Array[int] = []
@@ -69,13 +69,13 @@ func _recalculate_rivers() -> void:
 	for i in range(total):
 		sorted_indices[i] = i
 	sorted_indices.sort_custom(func(a: int, b: int) -> bool:
-		return grid.get_height(a % w, a / w) > grid.get_height(b % w, b / w)
+		return grid.get_height(a % w, int(a / w)) > grid.get_height(b % w, int(b / w))
 	)
 
 	_lake_count = 0
 	for idx in sorted_indices:
 		var x := idx % w
-		var y := idx / w
+		var y := int(idx / w)
 		var current_h := grid.get_height(x, y)
 
 		if current_h <= GameConfig.SEA_LEVEL:
@@ -103,14 +103,14 @@ func _recalculate_rivers() -> void:
 	for i in range(total):
 		var flow := flow_accumulation[i]
 		var x := i % w
-		var y := i / w
+		var y := int(i / w)
 		var ht := grid.get_height(x, y)
 
 		if ht <= GameConfig.SEA_LEVEL:
 			continue
 
 		if flow >= RIVER_THRESHOLD:
-			var strength := clampf(flow / 80.0, 0.1, 1.0)
+			var strength := clampf((flow - RIVER_THRESHOLD) / 120.0, 0.1, 1.0)
 			river_map[i] = strength
 			_river_count += 1
 

@@ -31,7 +31,7 @@ func initialize(w: int, h: int, terrain_grid: TorusGrid, temperature_map: Packed
 
 	for i in range(total):
 		var x := i % w
-		var y := i / w
+		var y := int(i / w)
 		var terrain_h := terrain_grid.get_height(x, y)
 
 		if terrain_h < GameConfig.SEA_LEVEL:

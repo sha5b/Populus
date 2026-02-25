@@ -17,23 +17,44 @@ func _init() -> void:
 	_noise.seed = randi()
 
 
+var _hurricane_angle: float = 0.0
+
 func update(_world: Node, delta: float) -> void:
 	_time_acc += delta * GameConfig.TIME_SCALE * 0.005
 
 	var perturbation := _noise.get_noise_1d(_time_acc) * 0.3
 	var base_angle := 0.0 + perturbation
-	direction = Vector2(cos(base_angle), sin(base_angle))
 
 	var base_speed := 1.5 + _noise.get_noise_1d(_time_acc + 100.0) * 0.5
 	if weather_system:
 		match weather_system.current_state:
+			DefEnums.WeatherState.HURRICANE:
+				# Hurricane: rotating wind that accelerates over time
+				_hurricane_angle += delta * 2.5
+				base_angle += _hurricane_angle
+				base_speed += 8.0
+				# Gusts
+				base_speed += _noise.get_noise_1d(_time_acc * 5.0 + 200.0) * 3.0
+			DefEnums.WeatherState.BLIZZARD:
+				# Blizzard: strong, erratic wind with rapid direction shifts
+				base_angle += _noise.get_noise_1d(_time_acc * 3.0 + 50.0) * 1.2
+				base_speed += 5.0
+				base_speed += absf(_noise.get_noise_1d(_time_acc * 4.0 + 300.0)) * 2.0
 			DefEnums.WeatherState.STORM:
 				base_speed += 3.0
 			DefEnums.WeatherState.RAIN:
 				base_speed += 1.0
 			DefEnums.WeatherState.CLOUDY:
 				base_speed += 0.3
+			DefEnums.WeatherState.HEATWAVE:
+				# Heatwave: very still air, occasional hot gusts
+				base_speed *= 0.3
+				base_speed += absf(_noise.get_noise_1d(_time_acc * 2.0 + 400.0)) * 0.5
 
+	if weather_system and weather_system.current_state != DefEnums.WeatherState.HURRICANE:
+		_hurricane_angle = 0.0
+
+	direction = Vector2(cos(base_angle), sin(base_angle))
 	speed = maxf(base_speed, 0.2)
 
 

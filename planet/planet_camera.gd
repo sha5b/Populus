@@ -25,8 +25,8 @@ var _is_panning: bool = false
 var _fps_grid_pos: Vector2 = Vector2(128.0, 128.0)
 var _fps_yaw: float = 0.0
 var _fps_pitch: float = 0.0
-var _fps_eye_height: float = 1.5
-var _fps_move_speed: float = 8.0
+var _fps_eye_height: float = 3.0
+var _fps_move_speed: float = 20.0
 var _fps_look_speed: float = 0.003
 var _fps_mouse_captured: bool = false
 var _fps_tangent_fwd: Vector3 = Vector3.FORWARD
@@ -175,16 +175,13 @@ func _fps_process(delta: float) -> void:
 	if absf(input_fwd) < 0.01 and absf(input_right) < 0.01:
 		return
 
-	var world_move := (_fps_tangent_fwd * input_fwd + _fps_tangent_right * input_right).normalized()
-	var move_len := _fps_move_speed * sprint * delta
+	# Move directly in grid space — no expensive inverse mapping needed
+	var move_speed := _fps_move_speed * sprint * delta
+	var dx := sin(_fps_yaw) * input_fwd + cos(_fps_yaw) * input_right
+	var dy := -cos(_fps_yaw) * input_fwd + sin(_fps_yaw) * input_right
 
-	var new_world := global_position + world_move * move_len
-	var new_grid := projector.sphere_to_grid(new_world)
-	var new_gx := float(new_grid.x) + 0.5
-	var new_gy := float(new_grid.y) + 0.5
-
-	_fps_grid_pos.x = fmod(new_gx + float(grid.width), float(grid.width))
-	_fps_grid_pos.y = clampf(new_gy, 0.0, float(grid.height - 1))
+	_fps_grid_pos.x = fmod(_fps_grid_pos.x + dx * move_speed + float(grid.width), float(grid.width))
+	_fps_grid_pos.y = clampf(_fps_grid_pos.y + dy * move_speed, 0.0, float(grid.height - 1))
 
 	_update_fps_transform()
 

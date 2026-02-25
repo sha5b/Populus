@@ -7,8 +7,10 @@ var biome_map: PackedInt32Array
 var river_map: PackedFloat32Array
 var micro_biome_map: PackedInt32Array
 var is_dirty: bool = false
+var _color_noise: FastNoiseLite
+var _color_noise2: FastNoiseLite
 
-const FACE_RES := 64
+const FACE_RES := 96
 const NUM_FACES := 6
 
 
@@ -16,6 +18,18 @@ func setup(g: TorusGrid, p: PlanetProjector) -> void:
 	grid = g
 	projector = p
 	biome_map = PackedInt32Array()
+	_color_noise = FastNoiseLite.new()
+	_color_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_color_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_color_noise.fractal_octaves = 3
+	_color_noise.frequency = 0.04
+	_color_noise.seed = 9999
+	_color_noise2 = FastNoiseLite.new()
+	_color_noise2.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_color_noise2.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_color_noise2.fractal_octaves = 2
+	_color_noise2.frequency = 0.1
+	_color_noise2.seed = 8888
 
 
 func set_biome_map(bm: PackedInt32Array) -> void:
@@ -88,7 +102,7 @@ func build_mesh() -> void:
 	mesh = arr_mesh
 
 
-func update_region(cx: int, cy: int, _radius_tiles: int) -> void:
+func update_region(_cx: int, _cy: int, _radius_tiles: int) -> void:
 	build_mesh()
 
 
@@ -152,35 +166,194 @@ func _color_at_tile(tx: int, ty: int) -> Color:
 	var idx := gy * w + gx
 	var height := grid.get_height(gx, gy)
 
+	# Rivers: water color with depth
 	if river_map.size() > idx and idx >= 0:
 		if river_map[idx] > 0.0:
 			var river_strength := clampf(river_map[idx], 0.0, 1.0)
-			var shallow := Color(0.2, 0.35, 0.55)
-			var deep := Color(0.08, 0.15, 0.45)
+			var shallow := Color(0.18, 0.32, 0.52)
+			var deep := Color(0.06, 0.12, 0.40)
 			return shallow.lerp(deep, river_strength)
 
-	if biome_map.size() > idx and idx >= 0:
-		var biome: int = biome_map[idx]
-		if DefBiomes.BIOME_DATA.has(biome):
-			var base_color: Color = DefBiomes.BIOME_DATA[biome]["color"]
-			var shade := clampf(0.8 + height * 0.5, 0.6, 1.2)
-			var col := base_color * shade
-			col = _apply_micro_tint(col, idx)
-			return col
+	# Get biome color with noise-based dual-color variation
+	var col := _get_biome_color_varied(gx, gy, idx, height)
 
-	return projector.height_color(height)
+	# Biome edge blending: smooth transitions at boundaries
+	col = _blend_biome_edges(col, gx, gy, idx)
+
+	# Shore gradient: tiles just above sea level get wet sand tint
+	var sea := GameConfig.SEA_LEVEL
+	if height > sea and height < sea + 0.04:
+		var shore_t := clampf((height - sea) / 0.04, 0.0, 1.0)
+		var wet_sand := Color(0.55, 0.50, 0.35)
+		col = wet_sand.lerp(col, shore_t)
+
+	# River bank tint: tiles adjacent to rivers get darker/muddy
+	if river_map.size() > idx and idx >= 0 and river_map[idx] <= 0.0:
+		var river_proximity := _get_river_proximity(gx, gy)
+		if river_proximity > 0.0:
+			var bank_col := Color(0.25, 0.30, 0.20)
+			col = col.lerp(bank_col, river_proximity * 0.35)
+
+	# Apply height + slope gradient
+	col = _apply_height_gradient(col, gx, gy, height)
+	return col
 
 
-func _apply_micro_tint(base: Color, idx: int) -> Color:
-	if micro_biome_map.size() <= idx or idx < 0:
-		return base
-	var mb: int = micro_biome_map[idx]
-	if mb == DefMicroBiomes.MicroBiomeType.STANDARD:
-		return base
-	if not DefMicroBiomes.MICRO_DATA.has(mb):
-		return base
-	var tint: Color = DefMicroBiomes.MICRO_DATA[mb]["color_tint"]
-	var blend := tint.a
-	if blend <= 0.0:
-		return base
-	return base.lerp(Color(tint.r, tint.g, tint.b), blend)
+func _get_biome_color_varied(gx: int, gy: int, idx: int, height: float) -> Color:
+	if biome_map.size() <= idx or idx < 0:
+		return projector.height_color(height)
+	var biome: int = biome_map[idx]
+	if not DefBiomes.BIOME_DATA.has(biome):
+		return projector.height_color(height)
+
+	# Ocean floor: height-based coloring to reveal underwater terrain
+	if biome == DefEnums.BiomeType.OCEAN:
+		return _get_ocean_floor_color(gx, gy, height)
+
+	var data: Dictionary = DefBiomes.BIOME_DATA[biome]
+	var col1: Color = data["color"]
+	var col2: Color = data.get("color2", col1)
+	var variation: float = data.get("color_variation", 0.2)
+
+	# Low-freq noise for large patches of color variation within biome
+	var n1 := (_color_noise.get_noise_2d(float(gx), float(gy)) + 1.0) * 0.5
+	# High-freq noise for small-scale texture
+	var n2 := (_color_noise2.get_noise_2d(float(gx), float(gy)) + 1.0) * 0.5
+
+	# Blend between color1 and color2 using low-freq noise
+	var base_col := col1.lerp(col2, n1)
+
+	# Add small-scale jitter for organic feel
+	var jitter := (n2 - 0.5) * variation * 0.3
+	base_col.r = clampf(base_col.r + jitter, 0.0, 1.0)
+	base_col.g = clampf(base_col.g + jitter * 0.8, 0.0, 1.0)
+	base_col.b = clampf(base_col.b + jitter * 0.5, 0.0, 1.0)
+
+	return base_col
+
+
+func _get_ocean_floor_color(gx: int, gy: int, height: float) -> Color:
+	var sea := GameConfig.SEA_LEVEL
+	var depth := sea - height
+	var depth_t := clampf(depth / 0.5, 0.0, 1.0)
+
+	# Continental shelf (very shallow): sandy/tan
+	var shelf := Color(0.35, 0.32, 0.22)
+	# Mid-depth: blue-green sediment
+	var mid := Color(0.12, 0.18, 0.28)
+	# Abyssal plain: very dark
+	var abyss := Color(0.04, 0.06, 0.14)
+
+	var base_col: Color
+	if depth_t < 0.15:
+		base_col = shelf.lerp(mid, depth_t / 0.15)
+	elif depth_t < 0.6:
+		base_col = mid.lerp(abyss, (depth_t - 0.15) / 0.45)
+	else:
+		base_col = abyss
+
+	# Slope-based ridge highlighting: steep underwater slopes = lighter (exposed rock)
+	var slope := _get_slope(gx, gy)
+	if slope > 0.02:
+		var ridge_tint := Color(0.22, 0.20, 0.18)
+		var ridge_t := clampf((slope - 0.02) / 0.08, 0.0, 0.6)
+		base_col = base_col.lerp(ridge_tint, ridge_t)
+
+	# Add noise variation for organic seafloor texture
+	var n := (_color_noise2.get_noise_2d(float(gx), float(gy)) + 1.0) * 0.5
+	var jitter := (n - 0.5) * 0.06
+	base_col.r = clampf(base_col.r + jitter, 0.0, 1.0)
+	base_col.g = clampf(base_col.g + jitter * 0.8, 0.0, 1.0)
+	base_col.b = clampf(base_col.b + jitter * 0.5, 0.0, 1.0)
+
+	return base_col
+
+
+func _blend_biome_edges(center_col: Color, gx: int, gy: int, idx: int) -> Color:
+	if biome_map.size() <= idx or idx < 0:
+		return center_col
+	var center_biome: int = biome_map[idx]
+	var w := grid.width
+	var diff_count := 0
+	var diff_r := 0.0
+	var diff_g := 0.0
+	var diff_b := 0.0
+
+	for n in grid.get_neighbors_4(gx, gy):
+		var ni := n.y * w + n.x
+		if ni < 0 or ni >= biome_map.size():
+			continue
+		if biome_map[ni] != center_biome:
+			diff_count += 1
+			var nh := grid.get_height(n.x, n.y)
+			var ncol := _get_biome_color_varied(n.x, n.y, ni, nh)
+			diff_r += ncol.r
+			diff_g += ncol.g
+			diff_b += ncol.b
+
+	if diff_count == 0:
+		return center_col
+
+	# Subtle blend: only 20% influence from different neighbors
+	var blend_t := float(diff_count) * 0.05
+	var avg_r := diff_r / float(diff_count)
+	var avg_g := diff_g / float(diff_count)
+	var avg_b := diff_b / float(diff_count)
+	return Color(
+		lerpf(center_col.r, avg_r, blend_t),
+		lerpf(center_col.g, avg_g, blend_t),
+		lerpf(center_col.b, avg_b, blend_t),
+		center_col.a
+	)
+
+
+func _get_river_proximity(gx: int, gy: int) -> float:
+	if river_map.is_empty():
+		return 0.0
+	var w := grid.width
+	var max_strength := 0.0
+	for n in grid.get_neighbors_4(gx, gy):
+		var ni := n.y * w + n.x
+		if ni >= 0 and ni < river_map.size():
+			max_strength = maxf(max_strength, river_map[ni])
+	return clampf(max_strength, 0.0, 1.0)
+
+
+func _apply_height_gradient(base_col: Color, gx: int, gy: int, height: float) -> Color:
+	# Height-based brightness: valleys darker, peaks brighter
+	var sea := GameConfig.SEA_LEVEL
+	var h_norm := clampf((height - sea) / (1.0 - sea), 0.0, 1.0) if height > sea else 0.0
+	var brightness := lerpf(0.75, 1.15, h_norm)
+
+	# Slope darkening: steep areas get darker (cliffs/ravines)
+	var slope := _get_slope(gx, gy)
+	var slope_darken := clampf(1.0 - slope * 1.5, 0.6, 1.0)
+	brightness *= slope_darken
+
+	# Apply: darken RGB but keep hue by multiplying
+	var result := Color(
+		clampf(base_col.r * brightness, 0.0, 1.0),
+		clampf(base_col.g * brightness, 0.0, 1.0),
+		clampf(base_col.b * brightness, 0.0, 1.0),
+		base_col.a
+	)
+
+	# High peaks: slight desaturation toward rocky grey
+	if h_norm > 0.7:
+		var grey := (result.r + result.g + result.b) / 3.0
+		var desat := clampf((h_norm - 0.7) / 0.3, 0.0, 0.4)
+		result.r = lerpf(result.r, grey, desat)
+		result.g = lerpf(result.g, grey, desat)
+		result.b = lerpf(result.b, grey, desat)
+
+	return result
+
+
+func _get_slope(gx: int, gy: int) -> float:
+	var h_l := grid.get_height(grid.wrap_x(gx - 1), gy)
+	var h_r := grid.get_height(grid.wrap_x(gx + 1), gy)
+	var h_u := grid.get_height(gx, clampi(gy - 1, 0, grid.height - 1))
+	var h_d := grid.get_height(gx, clampi(gy + 1, 0, grid.height - 1))
+	var dx := absf(h_r - h_l) * 0.5
+	var dy := absf(h_d - h_u) * 0.5
+	return sqrt(dx * dx + dy * dy)

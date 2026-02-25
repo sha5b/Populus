@@ -35,7 +35,7 @@ func process_chunk(px: int, py: int, size: int) -> void:
 
 
 func _erode_patch(px: int, py: int, size: int) -> void:
-	var transfers := 0
+	var _transfers := 0
 	for dy in range(size):
 		for dx in range(size):
 			var x := grid.wrap_x(px + dx)
@@ -54,7 +54,7 @@ func _erode_patch(px: int, py: int, size: int) -> void:
 					var transfer := (diff - talus_angle) * thermal_rate
 					grid.set_height(x, y, grid.get_height(x, y) - transfer)
 					grid.set_height(nx, ny, grid.get_height(nx, ny) + transfer)
-					transfers += 1
+					_transfers += 1
 
 
 func run_full_pass() -> void:

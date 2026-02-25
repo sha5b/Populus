@@ -22,8 +22,13 @@ const SPECIES_COLORS: Dictionary = {
 	"rabbit": Color(0.85, 0.85, 0.8),
 	"bear": Color(0.35, 0.2, 0.1),
 	"eagle": Color(0.8, 0.7, 0.3),
-	"fish": Color(0.3, 0.5, 0.8),
+	"fish": Color(0.5, 0.55, 0.7),
 	"bison": Color(0.4, 0.3, 0.15),
+	"shark": Color(0.45, 0.48, 0.52),
+	"whale": Color(0.3, 0.35, 0.45),
+	"jellyfish": Color(0.7, 0.5, 0.85),
+	"crab": Color(0.75, 0.35, 0.2),
+	"sea_turtle": Color(0.3, 0.5, 0.25),
 }
 
 const SPRITE_SIZE: Dictionary = {
@@ -34,6 +39,11 @@ const SPRITE_SIZE: Dictionary = {
 	"eagle": 0.8,
 	"fish": 0.5,
 	"bison": 1.4,
+	"shark": 1.6,
+	"whale": 2.5,
+	"jellyfish": 0.5,
+	"crab": 0.4,
+	"sea_turtle": 1.0,
 }
 
 const SPECIES_LETTER: Dictionary = {
@@ -44,6 +54,11 @@ const SPECIES_LETTER: Dictionary = {
 	"eagle": "E",
 	"fish": "F",
 	"bison": "N",
+	"shark": "S",
+	"whale": "H",
+	"jellyfish": "J",
+	"crab": "C",
+	"sea_turtle": "T",
 }
 
 
@@ -105,7 +120,14 @@ func _rebuild_all() -> void:
 			"ai": ai,
 		})
 
-	for key in SPECIES_COLORS:
+	# Render all species found + hide any that vanished
+	var all_keys := {}
+	for key in by_species:
+		all_keys[key] = true
+	for key in _multimeshes:
+		all_keys[key] = true
+
+	for key in all_keys:
 		if not by_species.has(key):
 			_set_instance_count(key, 0)
 			continue
@@ -151,7 +173,7 @@ func _set_instance_count(species_key: String, count: int) -> void:
 func _get_mesh(species_key: String) -> Mesh:
 	if _mesh_cache.has(species_key):
 		return _mesh_cache[species_key]
-	var sz: float = SPRITE_SIZE.get(species_key, 1.0)
+	var sz: float = SPRITE_SIZE.get(species_key, 1.0) * (GameConfig.PLANET_RADIUS / 100.0)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(sz, sz)
 	_mesh_cache[species_key] = quad
@@ -209,6 +231,11 @@ func _get_letter_pattern(letter: String) -> Array[String]:
 		"E": return ["####", "#...", "###.", "#...", "####"]
 		"F": return ["####", "#...", "###.", "#...", "#..."]
 		"N": return ["#..#", "##.#", "#.##", "#..#", "#..#"]
+		"S": return [".###", "#...", ".##.", "...#", "###."]
+		"H": return ["#..#", "#..#", "####", "#..#", "#..#"]
+		"J": return ["..##", "...#", "...#", "#..#", ".##."]
+		"C": return [".###", "#...", "#...", "#...", ".###"]
+		"T": return ["####", ".#..", ".#..", ".#..", ".#.."]
 		_: return ["####", "#..#", "#..#", "#..#", "####"]
 
 

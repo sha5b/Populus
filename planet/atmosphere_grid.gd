@@ -30,12 +30,14 @@ var _cloud_noise_hi: FastNoiseLite
 var _coverage_noise: FastNoiseLite
 var wind_offset: Vector3 = Vector3.ZERO
 var _cloud_time: float = 0.0
+var global_coverage_boost: float = 0.0
+var weather_darkness: float = 0.0
 
 const CLOUD_NOISE_SCALE := 1.2
 const CLOUD_DETAIL_SCALE := 3.0
 const CLOUD_COVERAGE_SCALE := 0.5
-const CLOUD_BASE_ALT := 3.0
-const CLOUD_TOP_ALT := 6.0
+static var CLOUD_BASE_ALT: float = GameConfig.PLANET_RADIUS * 0.06
+static var CLOUD_TOP_ALT: float = GameConfig.PLANET_RADIUS * 0.12
 const CLOUD_DENSITY_CAP := 1.0
 
 
@@ -62,7 +64,7 @@ func _init() -> void:
 	_cloud_noise_lo = FastNoiseLite.new()
 	_cloud_noise_lo.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_cloud_noise_lo.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_cloud_noise_lo.fractal_octaves = 2
+	_cloud_noise_lo.fractal_octaves = 4
 	_cloud_noise_lo.fractal_lacunarity = 2.0
 	_cloud_noise_lo.fractal_gain = 0.5
 	_cloud_noise_lo.frequency = 0.04
@@ -71,7 +73,7 @@ func _init() -> void:
 	_cloud_noise_hi = FastNoiseLite.new()
 	_cloud_noise_hi.noise_type = FastNoiseLite.TYPE_CELLULAR
 	_cloud_noise_hi.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_cloud_noise_hi.fractal_octaves = 2
+	_cloud_noise_hi.fractal_octaves = 3
 	_cloud_noise_hi.fractal_lacunarity = 2.5
 	_cloud_noise_hi.fractal_gain = 0.6
 	_cloud_noise_hi.frequency = 0.12
@@ -80,7 +82,7 @@ func _init() -> void:
 	_coverage_noise = FastNoiseLite.new()
 	_coverage_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_coverage_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_coverage_noise.fractal_octaves = 2
+	_coverage_noise.fractal_octaves = 3
 	_coverage_noise.frequency = 0.015
 	_coverage_noise.seed = 999
 
@@ -207,7 +209,7 @@ func sample_cloud_density_at_world(wp: Vector3, face: int, fu: int, fv: int, alt
 	var temp_coverage := clampf((sim_temp + 10.0) / 40.0, 0.0, 1.0)
 	var weather_coverage := clampf(sim_moisture * temp_coverage * 2.0, 0.0, 1.0)
 
-	var total_coverage := clampf(coverage * 0.4 + weather_coverage * 0.6, 0.0, 1.0)
+	var total_coverage := clampf(coverage * 0.4 + weather_coverage * 0.6 + global_coverage_boost, 0.0, 1.0)
 
 	var alt_frac := float(clampi(alt, 0, ALT_RES - 1)) / float(ALT_RES)
 	var profile := _vertical_profile(alt_frac)

@@ -3,6 +3,7 @@ render_mode blend_mix, depth_draw_never, cull_disabled, unshaded;
 
 uniform vec3 wind_drift = vec3(0.0);
 uniform float morph_t = 0.0;
+uniform float weather_darkness = 0.0;
 
 void vertex() {
 	vec3 dir = normalize(VERTEX);
@@ -27,6 +28,9 @@ void fragment() {
 	base += vec3(fresnel * 0.12);
 
 	float edge_alpha = smoothstep(0.0, 0.35, ndv);
+
+	// Darken clouds during storms/hurricanes/blizzards
+	base = mix(base, base * vec3(0.35, 0.35, 0.4), weather_darkness);
 
 	ALBEDO = base;
 	ALPHA = COLOR.a * edge_alpha;

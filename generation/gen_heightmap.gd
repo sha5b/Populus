@@ -9,11 +9,11 @@ var weirdness_map: PackedFloat32Array
 
 const NUM_PLATES := 12
 const PLATE_BOUNDARY_WIDTH := 0.14
-const MOUNTAIN_RIDGE_STRENGTH := 0.55
-const RIFT_DEPTH := 0.2
+const MOUNTAIN_RIDGE_STRENGTH := 0.85
+const RIFT_DEPTH := 0.35
 const POLAR_DAMPING_START := 0.7
-const VOLCANIC_STRENGTH := 0.3
-const SHELF_DROP := 0.12
+const VOLCANIC_STRENGTH := 0.5
+const SHELF_DROP := 0.18
 
 var _plate_centers: Array[Vector3] = []
 var _plate_is_continental: Array[bool] = []
@@ -127,7 +127,7 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 				polar_damp = 1.0 - (abs_lat - POLAR_DAMPING_START) / (1.0 - POLAR_DAMPING_START)
 				polar_damp = clampf(polar_damp, 0.1, 1.0)
 
-			var raw := base_h + (tectonic_h + mountain_h + shelf_h) * polar_damp + d * 0.06 + md * 0.02
+			var raw := base_h + (tectonic_h + mountain_h + shelf_h) * polar_damp + d * 0.1 + md * 0.04
 
 			# Ocean floor detail: ridges, trenches, seamounts, stones
 			if raw < 0.0:
@@ -138,20 +138,23 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 				var stone_val := ocean_stones.get_noise_3d(sp.x * 2.0, sp.y * 2.0, sp.z * 2.0)
 
 				# Mid-ocean ridges — raised spines on deep ocean floor
-				var ridge_h := or_val * or_val * 0.15 * clampf(ocean_depth / 0.3, 0.0, 1.0)
+				var ridge_h := or_val * or_val * 0.30 * clampf(ocean_depth / 0.3, 0.0, 1.0)
+				# Extra ridge at divergent plate boundaries
+				if boundary_factor > 0.3 and not is_convergent:
+					ridge_h += boundary_factor * 0.20 * or_val
 
 				# Deep trenches — narrow deep cuts
 				var trench_h := 0.0
-				if ot_val > 0.6:
-					trench_h = -(ot_val - 0.6) * 0.4 * boundary_factor
+				if ot_val > 0.5:
+					trench_h = -(ot_val - 0.5) * 0.8 * boundary_factor
 
 				# Seamounts — isolated underwater peaks
 				var seamount_h := 0.0
-				if os_val > 0.75:
-					seamount_h = (os_val - 0.75) * 0.8 * clampf(ocean_depth / 0.2, 0.0, 1.0)
+				if os_val > 0.70:
+					seamount_h = (os_val - 0.70) * 1.2 * clampf(ocean_depth / 0.2, 0.0, 1.0)
 
 				# Small stone/rock variation across ocean floor
-				var stone_h := stone_val * 0.03
+				var stone_h := stone_val * 0.06
 
 				raw += ridge_h + trench_h + seamount_h + stone_h
 
@@ -235,26 +238,26 @@ func _make_noise(seed_val: int, freq: float, octaves: int, fractal: int) -> Fast
 
 func _continental_spline(c: float) -> float:
 	if c < 0.3:
-		return lerpf(-0.5, -0.1, c / 0.3)
-	elif c < 0.45:
-		return lerpf(-0.1, 0.05, (c - 0.3) / 0.15)
+		return lerpf(-0.7, -0.15, c / 0.3)
+	elif c < 0.42:
+		return lerpf(-0.15, 0.05, (c - 0.3) / 0.12)
 	elif c < 0.55:
-		return lerpf(0.05, 0.15, (c - 0.45) / 0.1)
+		return lerpf(0.05, 0.2, (c - 0.42) / 0.13)
 	elif c < 0.75:
-		return lerpf(0.15, 0.35, (c - 0.55) / 0.2)
+		return lerpf(0.2, 0.5, (c - 0.55) / 0.2)
 	else:
-		return lerpf(0.35, 0.7, (c - 0.75) / 0.25)
+		return lerpf(0.5, 0.95, (c - 0.75) / 0.25)
 
 
 func _erosion_spline(inv_erosion: float) -> float:
 	if inv_erosion < 0.2:
-		return 0.02
+		return 0.04
 	elif inv_erosion < 0.5:
-		return lerpf(0.02, 0.15, (inv_erosion - 0.2) / 0.3)
+		return lerpf(0.04, 0.25, (inv_erosion - 0.2) / 0.3)
 	elif inv_erosion < 0.8:
-		return lerpf(0.15, 0.4, (inv_erosion - 0.5) / 0.3)
+		return lerpf(0.25, 0.6, (inv_erosion - 0.5) / 0.3)
 	else:
-		return lerpf(0.4, 0.65, (inv_erosion - 0.8) / 0.2)
+		return lerpf(0.6, 0.9, (inv_erosion - 0.8) / 0.2)
 
 
 func _normalize(grid: TorusGrid, min_h: float, max_h: float) -> void:

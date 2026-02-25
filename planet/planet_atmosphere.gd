@@ -6,7 +6,7 @@ var _material: ShaderMaterial
 
 func setup(planet_radius: float) -> void:
 	var sphere := SphereMesh.new()
-	var atmo_radius := planet_radius + 3.0
+	var atmo_radius := planet_radius * 1.02
 	sphere.radius = atmo_radius
 	sphere.height = atmo_radius * 2.0
 	sphere.radial_segments = 64

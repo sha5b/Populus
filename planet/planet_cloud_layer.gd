@@ -1,7 +1,7 @@
 extends Node3D
 class_name PlanetCloudLayer
 
-const MAX_REBUILDS_PER_FRAME := 2
+const MAX_REBUILDS_PER_FRAME := 24
 const CLOUD_LOD_STEP := 2
 
 var _projector: PlanetProjector
@@ -9,8 +9,7 @@ var _atmo_grid: AtmosphereGrid
 var _cloud_material: ShaderMaterial
 var _chunk_meshes: Array[MeshInstance3D] = []
 var _rebuild_index: int = 0
-var _cloud_altitude: float = 3.5
-var _wind_drift: Vector3 = Vector3.ZERO
+var _cloud_altitude: float = GameConfig.PLANET_RADIUS * 0.07
 var _drift_since_rebuild: Vector3 = Vector3.ZERO
 var _morph_t: float = 0.5
 var _rebuild_cycle_timer: float = 0.0
@@ -80,9 +79,16 @@ func _rebuild_chunk_by_idx(ci: int) -> void:
 	_chunk_meshes[ci].mesh = mesh
 
 
-func set_global_coverage(_coverage: float) -> void:
-	pass
+func set_global_coverage(coverage: float) -> void:
+	if _atmo_grid:
+		_atmo_grid.global_coverage_boost = coverage * 0.5
+
+
+func set_weather_darkness(darkness: float) -> void:
+	if _cloud_material:
+		_cloud_material.set_shader_parameter("weather_darkness", darkness)
 
 
 func clear_coverage() -> void:
-	pass
+	if _atmo_grid:
+		_atmo_grid.global_coverage_boost = 0.0

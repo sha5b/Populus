@@ -100,10 +100,12 @@ func _update_multimesh(type_key: String, instances: Array) -> void:
 		var up := wp.normalized()
 		var mesh_height: float = species.get("mesh_height", 0.5)
 		var stage_scale := _stage_scale(growth.stage)
-		var final_height := mesh_height * stage_scale
+		var planet_scale := GameConfig.PLANET_RADIUS / 100.0
+		var final_height := mesh_height * stage_scale * planet_scale
+		var width_scale := stage_scale * 0.4 * planet_scale
 
 		var t := Transform3D()
-		t = t.scaled(Vector3(stage_scale * 0.4, final_height, stage_scale * 0.4))
+		t = t.scaled(Vector3(width_scale, final_height, width_scale))
 
 		var fwd := up.cross(Vector3.RIGHT)
 		if fwd.length_squared() < 0.001:
@@ -117,14 +119,15 @@ func _update_multimesh(type_key: String, instances: Array) -> void:
 		mm.set_instance_transform(i, t)
 
 		var base_color: Color = species.get("mesh_color", Color(0.3, 0.5, 0.2))
+
 		if burning:
 			base_color = Color(0.9, 0.3, 0.1)
 		elif growth.stage == DefEnums.GrowthStage.SEED:
 			base_color = base_color.darkened(0.4)
-		elif growth.stage == DefEnums.GrowthStage.OLD:
-			base_color = base_color.darkened(0.25)
 		elif growth.stage == DefEnums.GrowthStage.SAPLING:
-			base_color = base_color.lightened(0.15)
+			base_color = base_color.lightened(0.1)
+		elif growth.stage == DefEnums.GrowthStage.OLD:
+			base_color = base_color.darkened(0.15)
 
 		mm.set_instance_color(i, base_color)
 
@@ -190,9 +193,41 @@ func _create_multimesh_node(type_key: String) -> void:
 	mmi.name = "Flora_" + type_key
 	mmi.multimesh = mm
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.material_override = _create_flora_material(type_key)
 	add_child(mmi)
 
 	_multimeshes[type_key] = mmi
+
+
+func _create_flora_material(type_key: String) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+	match type_key:
+		"tree":
+			mat.roughness = 0.82
+			mat.specular_amount = 0.15
+		"bush":
+			mat.roughness = 0.85
+			mat.specular_amount = 0.12
+		"grass":
+			mat.roughness = 0.90
+			mat.specular_amount = 0.08
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			mat.alpha_scissor_threshold = 0.1
+		"aquatic":
+			mat.roughness = 0.60
+			mat.specular_amount = 0.35
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		"ground":
+			mat.roughness = 0.92
+			mat.specular_amount = 0.05
+		_:
+			mat.roughness = 0.80
+			mat.specular_amount = 0.15
+
+	return mat
 
 
 func _get_base_mesh(type_key: String) -> Mesh:
