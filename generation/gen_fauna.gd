@@ -4,7 +4,7 @@ var grid: TorusGrid
 var projector: PlanetProjector
 var rng := RandomNumberGenerator.new()
 
-const MAX_PER_SPECIES := 40
+const MAX_PER_SPECIES := 80
 const LAND_SPECIES := ["deer", "wolf", "rabbit", "bear", "eagle", "bison"]
 const WATER_SPECIES := ["fish"]
 

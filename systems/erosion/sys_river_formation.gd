@@ -7,13 +7,17 @@ var river_map: PackedFloat32Array
 var flow_map: PackedFloat32Array
 var time_system: SysTime = null
 
-const RIVER_THRESHOLD := 25.0
-const CANYON_THRESHOLD := 80.0
+const BASE_RIVER_THRESHOLD := 25.0
+const BASE_CANYON_THRESHOLD := 80.0
 const BASE_CARVE_RATE := 0.006
 const CANYON_CARVE_RATE := 0.015
 const CARVE_PASSES := 3
 const RIVER_MOISTURE_BOOST := 0.10
 const RIVER_MOISTURE_RADIUS := 2
+
+# These get computed in setup() based on grid size
+var RIVER_THRESHOLD := 25.0
+var CANYON_THRESHOLD := 80.0
 
 var _last_season: int = -1
 var _river_count: int = 0
@@ -25,6 +29,13 @@ func setup(g: TorusGrid, ts: SysTime, moist: PackedFloat32Array) -> void:
 	time_system = ts
 	moisture_map = moist
 	var total := g.width * g.height
+
+	# Scale thresholds with grid size — flow accumulation grows with more upstream tiles
+	var scale_factor := float(g.width) / 128.0
+	RIVER_THRESHOLD = BASE_RIVER_THRESHOLD * scale_factor
+	CANYON_THRESHOLD = BASE_CANYON_THRESHOLD * scale_factor
+	print("River thresholds scaled for %dx%d: river=%.0f, canyon=%.0f" % [g.width, g.height, RIVER_THRESHOLD, CANYON_THRESHOLD])
+
 	river_map = PackedFloat32Array()
 	river_map.resize(total)
 	river_map.fill(0.0)
@@ -54,6 +65,7 @@ func _recalculate_rivers() -> void:
 	var h := grid.height
 	var total := w * h
 
+	# --- Phase 1: Compute flow direction and accumulation ---
 	var flow_accumulation := PackedFloat32Array()
 	flow_accumulation.resize(total)
 	var flow_dir := PackedInt32Array()
@@ -61,9 +73,9 @@ func _recalculate_rivers() -> void:
 	flow_dir.fill(-1)
 
 	for i in range(total):
-		var _ht := grid.get_height(i % w, int(i / w))
 		flow_accumulation[i] = 1.0 + maxf(moisture_map[i] if i < moisture_map.size() else 0.5, 0.0)
 
+	# Sort tiles high-to-low so flow propagates downhill
 	var sorted_indices: Array[int] = []
 	sorted_indices.resize(total)
 	for i in range(total):
@@ -83,45 +95,98 @@ func _recalculate_rivers() -> void:
 
 		var best_n := -1
 		var best_h := current_h
+		var lowest_n := -1
+		var lowest_h := 999.0
 		for neighbor in grid.get_neighbors_8(x, y):
 			var nh := grid.get_height(neighbor.x, neighbor.y)
 			if nh < best_h:
 				best_h = nh
 				best_n = neighbor.y * w + neighbor.x
+			if nh < lowest_h:
+				lowest_h = nh
+				lowest_n = neighbor.y * w + neighbor.x
 
 		if best_n < 0:
-			if flow_accumulation[idx] > 10.0:
-				_lake_count += 1
-			continue
+			# Pit fill: if no downhill neighbor, carve through the lowest rim
+			if lowest_n >= 0 and flow_accumulation[idx] > 5.0:
+				var lx := lowest_n % w
+				var ly := int(lowest_n / w)
+				var spill_h := current_h - 0.001
+				grid.set_height(lx, ly, minf(lowest_h, spill_h))
+				best_n = lowest_n
+			else:
+				if flow_accumulation[idx] > 10.0:
+					_lake_count += 1
+				continue
 
 		flow_dir[idx] = best_n
 		flow_accumulation[best_n] += flow_accumulation[idx]
 
+	# --- Phase 2: Trace continuous river paths from sources to ocean ---
 	river_map.fill(0.0)
 	_river_count = 0
 
+	# Collect river source tiles (high flow accumulation above land)
+	var sources: Array[int] = []
 	for i in range(total):
-		var flow := flow_accumulation[i]
-		var x := i % w
-		var y := int(i / w)
-		var ht := grid.get_height(x, y)
+		if flow_accumulation[i] >= RIVER_THRESHOLD:
+			var ht := grid.get_height(i % w, int(i / w))
+			if ht > GameConfig.SEA_LEVEL:
+				sources.append(i)
 
-		if ht <= GameConfig.SEA_LEVEL:
-			continue
+	# Sort sources by flow descending — trace biggest rivers first
+	sources.sort_custom(func(a: int, b: int) -> bool:
+		return flow_accumulation[a] > flow_accumulation[b]
+	)
 
-		if flow >= RIVER_THRESHOLD:
-			var strength := clampf((flow - RIVER_THRESHOLD) / 120.0, 0.1, 1.0)
-			river_map[i] = strength
-			_river_count += 1
-
-			var carve := BASE_CARVE_RATE * clampf(flow / 30.0, 0.5, 3.0)
-			if flow >= CANYON_THRESHOLD:
-				carve = CANYON_CARVE_RATE * clampf(flow / 60.0, 1.0, 4.0)
-				_widen_canyon(x, y, clampf(flow / 100.0, 0.3, 0.8))
-			grid.set_height(x, y, maxf(ht - carve, GameConfig.SEA_LEVEL + 0.001))
+	# Trace each source downstream until ocean or loop
+	for src in sources:
+		_trace_river_path(src, flow_dir, flow_accumulation, w)
 
 	flow_map = flow_accumulation
 	_apply_moisture_boost(w, h)
+
+
+func _trace_river_path(start_idx: int, flow_dir: PackedInt32Array, flow_acc: PackedFloat32Array, w: int) -> void:
+	var idx := start_idx
+	var max_steps := grid.width + grid.height
+	var step := 0
+	# Strength normalization scales with grid — bigger grid = higher flow values
+	var strength_divisor := RIVER_THRESHOLD * 5.0
+
+	while step < max_steps:
+		step += 1
+		var x := idx % w
+		var y := int(idx / w)
+		var ht := grid.get_height(x, y)
+
+		# Stop at ocean
+		if ht <= GameConfig.SEA_LEVEL:
+			break
+
+		# Mark this tile as river with strength based on flow
+		var flow := flow_acc[idx]
+		var strength := clampf((flow - RIVER_THRESHOLD * 0.5) / strength_divisor, 0.1, 1.0)
+
+		# If already marked with equal or stronger river, stop (merged into existing)
+		if river_map[idx] >= strength:
+			break
+
+		river_map[idx] = maxf(river_map[idx], strength)
+		_river_count += 1
+
+		# Carve the river channel (divisors scale with threshold to stay consistent)
+		var carve := BASE_CARVE_RATE * clampf(flow / (RIVER_THRESHOLD * 1.6), 0.5, 2.0)
+		if flow >= CANYON_THRESHOLD:
+			carve = CANYON_CARVE_RATE * clampf(flow / (CANYON_THRESHOLD * 1.0), 1.0, 3.0)
+			_widen_canyon(x, y, clampf(flow / (CANYON_THRESHOLD * 2.0), 0.2, 0.5))
+		grid.set_height(x, y, maxf(ht - carve, GameConfig.SEA_LEVEL + 0.001))
+
+		# Follow flow direction downstream
+		var next := flow_dir[idx]
+		if next < 0 or next == idx:
+			break
+		idx = next
 
 
 func _widen_canyon(cx: int, cy: int, depth: float) -> void:

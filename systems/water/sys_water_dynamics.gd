@@ -14,7 +14,7 @@ var _chunk_offset: int = 0
 var _ocean_current_timer: float = 0.0
 
 const TICK_INTERVAL := 0.5
-const CHUNK_SIZE := 2048
+const CHUNK_SIZE := 8192
 const OCEAN_CURRENT_INTERVAL := 3.0
 
 const GRAVITY := 0.08

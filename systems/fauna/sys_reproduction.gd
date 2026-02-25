@@ -87,11 +87,11 @@ func _count_species(ecs: EcsWorld, entities: Array[int]) -> void:
 
 func _get_species_cap(species_key: String) -> int:
 	var data: Dictionary = DefFauna.SPECIES_DATA.get(species_key, {})
-	var base_cap := 40
+	var base_cap := 80
 	if data.get("social", "solitary") == "solitary":
-		base_cap = 12
+		base_cap = 25
 	elif data.get("social", "") == "pack":
-		base_cap = 20
+		base_cap = 40
 	return base_cap
 
 

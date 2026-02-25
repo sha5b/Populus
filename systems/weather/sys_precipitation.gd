@@ -13,7 +13,7 @@ var _timer: float = 0.0
 var _chunk_offset: int = 0
 
 const TICK_INTERVAL := 2.0
-const CHUNK_SIZE := 2048
+const CHUNK_SIZE := 8192
 
 
 func setup(

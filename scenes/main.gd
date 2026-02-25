@@ -36,6 +36,10 @@ var _weirdness_map: PackedFloat32Array
 var _debug_label: Label
 
 
+var _loading_label: Label
+var _is_generating: bool = true
+
+
 func _ready() -> void:
 	world = EcsWorld.new()
 	world.name = "EcsWorld"
@@ -45,14 +49,86 @@ func _ready() -> void:
 
 	_run_ecs_verification()
 	_run_torus_grid_tests()
+
+	# Set up visuals first so planet is visible during generation
 	_build_planet()
-	_generate_terrain()
-	_add_water_sphere()
-	_add_cloud_and_atmosphere()
 	_add_camera_and_light()
+	_add_loading_label()
+
+	# Run heavy generation as a coroutine so each stage renders a frame
+	_generate_async()
+
+
+func _add_loading_label() -> void:
+	var canvas := CanvasLayer.new()
+	canvas.name = "LoadingCanvas"
+	canvas.layer = 100
+	add_child(canvas)
+	_loading_label = Label.new()
+	_loading_label.name = "LoadingLabel"
+	_loading_label.text = "Generating planet..."
+	_loading_label.add_theme_font_size_override("font_size", 22)
+	_loading_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
+	_loading_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_loading_label.add_theme_constant_override("shadow_offset_x", 2)
+	_loading_label.add_theme_constant_override("shadow_offset_y", 2)
+	_loading_label.position = Vector2(20, 20)
+	canvas.add_child(_loading_label)
+
+
+func _set_loading_text(text: String) -> void:
+	if _loading_label:
+		_loading_label.text = text
+	print(text)
+
+
+func _generate_async() -> void:
+	_set_loading_text("Generating heightmap...")
+	await get_tree().process_frame
+
+	_generate_terrain_step1_heightmap()
+	planet_mesh.build_mesh()
+	_set_loading_text("Eroding terrain...")
+	await get_tree().process_frame
+
+	_generate_terrain_step2_erosion()
+	planet_mesh.build_mesh()
+	_set_loading_text("Carving rivers...")
+	await get_tree().process_frame
+
+	_generate_terrain_step3_rivers()
+	planet_mesh.set_river_map(river_system.river_map)
+	planet_mesh.build_mesh()
+	_set_loading_text("Assigning biomes...")
+	await get_tree().process_frame
+
+	_generate_terrain_step4_biomes()
+	planet_mesh.build_mesh()
+	_set_loading_text("Adding water...")
+	await get_tree().process_frame
+
+	_add_water_sphere()
+	_set_loading_text("Generating flora...")
+	await get_tree().process_frame
+
+	_generate_terrain_step5_flora_fauna()
+	_set_loading_text("Adding clouds & atmosphere...")
+	await get_tree().process_frame
+
+	_add_cloud_and_atmosphere()
 	_add_rain_snow_particles()
+	_set_loading_text("Starting systems...")
+	await get_tree().process_frame
+
 	_register_systems()
 	_add_debug_hud()
+
+	# Remove loading label
+	if _loading_label:
+		_loading_label.get_parent().queue_free()
+		_loading_label = null
+	_is_generating = false
+	print("Planet generation complete!")
 
 
 func _run_ecs_verification() -> void:
@@ -188,8 +264,9 @@ func _add_camera_and_light() -> void:
 
 	var light := DirectionalLight3D.new()
 	light.name = "SunLight"
-	light.rotation_degrees = Vector3(-45, 30, 0)
-	light.light_energy = 1.2
+	# Start at hour 6 (dawn): elevation = (6/24)*360 - 90 = 0°
+	light.rotation_degrees = Vector3(0.0, 30.0, 23.0)
+	light.light_energy = 0.05
 	light.shadow_enabled = true
 	add_child(light)
 
@@ -207,7 +284,7 @@ func _add_camera_and_light() -> void:
 	print("Camera and light added.")
 
 
-func _generate_terrain() -> void:
+func _generate_terrain_step1_heightmap() -> void:
 	heightmap_gen = GenHeightmap.new(GameConfig.WORLD_SEED)
 	heightmap_gen.generate(grid, projector)
 
@@ -215,10 +292,7 @@ func _generate_terrain() -> void:
 	_erosion_noise_map = heightmap_gen.erosion_map
 	_weirdness_map = heightmap_gen.weirdness_map
 
-	var w := grid.width
-	var h := grid.height
-	var total := w * h
-
+	var total := grid.width * grid.height
 	temperature_map = PackedFloat32Array()
 	temperature_map.resize(total)
 	moisture_map = PackedFloat32Array()
@@ -228,13 +302,23 @@ func _generate_terrain() -> void:
 
 	var biome_gen := GenBiome.new(GameConfig.WORLD_SEED)
 	biome_gen.generate(grid, temperature_map, moisture_map, projector)
+	print("Heightmap + climate generated.")
 
+
+func _generate_terrain_step2_erosion() -> void:
 	_prebake_erosion(moisture_map)
 	print("Erosion prebake complete.")
 
+
+func _generate_terrain_step3_rivers() -> void:
 	river_system = SysRiverFormation.new()
 	river_system.setup(grid, null, moisture_map)
-	print("River carving complete — rivers exist before biome assignment.")
+	print("River carving complete.")
+
+
+func _generate_terrain_step4_biomes() -> void:
+	var w := grid.width
+	var h := grid.height
 
 	base_temperature_map = temperature_map.duplicate()
 	base_moisture_map = moisture_map.duplicate()
@@ -250,8 +334,10 @@ func _generate_terrain() -> void:
 
 	planet_mesh.set_biome_map(biome_map)
 	planet_mesh.set_river_map(river_system.river_map)
-	planet_mesh.build_mesh()
+	print("Biomes assigned.")
 
+
+func _generate_terrain_step5_flora_fauna() -> void:
 	var flora_count := GenFlora.generate(world, grid, biome_map, projector)
 	print("Flora generated: %d plants." % flora_count)
 
@@ -267,6 +353,7 @@ func _generate_terrain() -> void:
 	fauna_renderer.name = "FaunaRenderer"
 	fauna_renderer.setup(projector, grid, world)
 	add_child(fauna_renderer)
+	print("Fauna generated.")
 
 
 
@@ -431,7 +518,7 @@ func _prebake_erosion(moist: PackedFloat32Array) -> void:
 
 	const PREBAKE_ITERATIONS := 2
 	for i in range(PREBAKE_ITERATIONS):
-		for _p in range(150):
+		for _p in range(400):
 			var sx := randi() % grid.width
 			var sy := randi() % grid.height
 			if grid.get_height(sx, sy) > GameConfig.SEA_LEVEL:
@@ -445,6 +532,8 @@ func _prebake_erosion(moist: PackedFloat32Array) -> void:
 
 
 func _process(delta: float) -> void:
+	if _is_generating:
+		return
 	_mesh_rebuild_timer += delta
 	if _mesh_rebuild_timer >= _mesh_rebuild_interval:
 		_mesh_rebuild_timer = 0.0

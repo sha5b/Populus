@@ -8,17 +8,18 @@ static var _boundary_noise2: FastNoiseLite
 static func _ensure_boundary_noise() -> void:
 	if _boundary_noise != null:
 		return
+	var freq_scale := 128.0 / float(GameConfig.GRID_WIDTH)
 	_boundary_noise = FastNoiseLite.new()
 	_boundary_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_boundary_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_boundary_noise.fractal_octaves = 3
-	_boundary_noise.frequency = 0.05
+	_boundary_noise.frequency = 0.05 * freq_scale
 	_boundary_noise.seed = 77777
 	_boundary_noise2 = FastNoiseLite.new()
 	_boundary_noise2.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_boundary_noise2.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_boundary_noise2.fractal_octaves = 2
-	_boundary_noise2.frequency = 0.08
+	_boundary_noise2.frequency = 0.08 * freq_scale
 	_boundary_noise2.seed = 88888
 
 

@@ -9,7 +9,7 @@ var _timer: float = 0.0
 var _chunk_offset: int = 0
 
 const TICK_INTERVAL := 3.0
-const CHUNK_SIZE := 1024
+const CHUNK_SIZE := 4096
 const UPLIFT_RATE := 0.0004
 const SUBSIDENCE_RATE := 0.0001
 const ISOSTATIC_RATE := 0.0002

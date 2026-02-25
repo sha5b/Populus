@@ -18,17 +18,19 @@ func setup(g: TorusGrid, p: PlanetProjector) -> void:
 	grid = g
 	projector = p
 	biome_map = PackedInt32Array()
+	# Scale noise frequency inversely with grid size for consistent feature scale
+	var freq_scale := 128.0 / float(g.width)
 	_color_noise = FastNoiseLite.new()
 	_color_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_color_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_color_noise.fractal_octaves = 3
-	_color_noise.frequency = 0.04
+	_color_noise.frequency = 0.04 * freq_scale
 	_color_noise.seed = 9999
 	_color_noise2 = FastNoiseLite.new()
 	_color_noise2.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_color_noise2.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_color_noise2.fractal_octaves = 2
-	_color_noise2.frequency = 0.1
+	_color_noise2.frequency = 0.1 * freq_scale
 	_color_noise2.seed = 8888
 
 

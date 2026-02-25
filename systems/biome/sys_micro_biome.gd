@@ -12,7 +12,7 @@ var micro_biome_map: PackedInt32Array
 var _reassign_timer: float = 0.0
 var _chunk_offset: int = 0
 const TICK_INTERVAL := 3.0
-const CHUNK_SIZE := 1024
+const CHUNK_SIZE := 4096
 
 # Spatial coherence noise — modulates thresholds so nearby tiles agree
 var _coherence_noise: FastNoiseLite
@@ -40,9 +40,10 @@ func setup(
 	micro_biome_map.resize(total)
 	micro_biome_map.fill(DefMicroBiomes.MicroBiomeType.STANDARD)
 
+	var freq_scale := 128.0 / float(g.width)
 	_coherence_noise = FastNoiseLite.new()
 	_coherence_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_coherence_noise.frequency = 0.06
+	_coherence_noise.frequency = 0.06 * freq_scale
 	_coherence_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_coherence_noise.fractal_octaves = 3
 	_coherence_noise.seed = 9999

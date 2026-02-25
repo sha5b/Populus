@@ -45,11 +45,12 @@ func _update_day_night() -> void:
 		return
 
 	var hour_frac := float(hour) + fmod(game_time / 60.0, 1.0)
-	var sun_angle := (hour_frac / 24.0) * TAU
 
-	var sun_pos := Vector3(cos(sun_angle), 0.3, sin(sun_angle)).normalized() * 200.0
-	sun_light.global_position = sun_pos
-	sun_light.look_at(Vector3.ZERO, Vector3.UP)
+	# Sun elevation: 0h = nadir (-90°), 6h = horizon (0°), 12h = zenith (90°), 18h = horizon (0°)
+	# Maps 0-24h to a full rotation on X axis
+	var elevation_deg := (hour_frac / 24.0) * 360.0 - 90.0
+	var axial_tilt := 23.0
+	sun_light.rotation_degrees = Vector3(elevation_deg, 30.0, axial_tilt)
 
 	# Dawn/dusk coloring, night dimming
 	var day_t := 0.0
@@ -60,7 +61,7 @@ func _update_day_night() -> void:
 	elif hour_frac > 19.0 and hour_frac < 20.0:
 		day_t = 1.0 - (hour_frac - 19.0)
 
-	day_night_energy = lerpf(0.15, 1.2, day_t)
+	day_night_energy = lerpf(0.05, 1.2, day_t)
 	sun_light.light_energy = day_night_energy
 
 	# Sunrise/sunset warm tint

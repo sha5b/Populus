@@ -1,9 +1,9 @@
 class_name GenFlora
 
 const MAX_FLORA_PER_TILE := 1
-const MAX_TOTAL_FLORA := 16000
-const MAX_AQUATIC_FLORA := 5000
-const AQUATIC_DENSITY := 0.08
+const MAX_TOTAL_FLORA := 64000
+const MAX_AQUATIC_FLORA := 20000
+const AQUATIC_DENSITY := 0.10
 
 static var _clump_noise: FastNoiseLite
 static var _species_noise: FastNoiseLite
@@ -12,11 +12,13 @@ static var _species_noise: FastNoiseLite
 static func _ensure_noise() -> void:
 	if _clump_noise != null:
 		return
+	# Scale noise frequencies inversely with grid size
+	var freq_scale := 128.0 / float(GameConfig.GRID_WIDTH)
 	_clump_noise = FastNoiseLite.new()
 	_clump_noise.noise_type = FastNoiseLite.TYPE_CELLULAR
 	_clump_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_clump_noise.fractal_octaves = 2
-	_clump_noise.frequency = 0.06
+	_clump_noise.frequency = 0.06 * freq_scale
 	_clump_noise.seed = 54321
 	_clump_noise.cellular_distance_function = FastNoiseLite.DISTANCE_EUCLIDEAN
 	_clump_noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
@@ -25,7 +27,7 @@ static func _ensure_noise() -> void:
 	_species_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_species_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_species_noise.fractal_octaves = 2
-	_species_noise.frequency = 0.08
+	_species_noise.frequency = 0.08 * freq_scale
 	_species_noise.seed = 67890
 
 

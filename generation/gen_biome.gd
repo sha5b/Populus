@@ -10,7 +10,16 @@ func _init(world_seed: int = 0) -> void:
 func generate(grid: TorusGrid, temperature_map: PackedFloat32Array, moisture_map: PackedFloat32Array, proj: PlanetProjector = null) -> void:
 	_generate_temperature(grid, temperature_map, proj)
 	_generate_moisture(grid, moisture_map, proj)
-	print("Generated biome data: temperature + moisture maps.")
+	# Diagnostic: verify map distributions
+	var t_min := 1.0; var t_max := 0.0; var t_sum := 0.0
+	var m_min := 1.0; var m_max := 0.0; var m_sum := 0.0
+	for i in range(temperature_map.size()):
+		t_min = minf(t_min, temperature_map[i]); t_max = maxf(t_max, temperature_map[i]); t_sum += temperature_map[i]
+		m_min = minf(m_min, moisture_map[i]); m_max = maxf(m_max, moisture_map[i]); m_sum += moisture_map[i]
+	var n := float(temperature_map.size())
+	print("Biome maps (%dx%d): temp=[%.2f, %.2f] avg=%.2f | moist=[%.2f, %.2f] avg=%.2f" % [
+		grid.width, grid.height, t_min, t_max, t_sum / n, m_min, m_max, m_sum / n
+	])
 
 
 func _generate_temperature(grid: TorusGrid, temp_map: PackedFloat32Array, proj: PlanetProjector = null) -> void:
@@ -60,6 +69,9 @@ func _generate_moisture(grid: TorusGrid, moist_map: PackedFloat32Array, proj: Pl
 	var w := grid.width
 	var h := grid.height
 
+	# Max distance scales with grid size so interior moisture stays consistent
+	var max_water_dist := maxf(float(w) * 0.4, 50.0)
+
 	var distance_to_water := PackedFloat32Array()
 	distance_to_water.resize(w * h)
 	distance_to_water.fill(999.0)
@@ -76,7 +88,7 @@ func _generate_moisture(grid: TorusGrid, moist_map: PackedFloat32Array, proj: Pl
 		var pos := queue[head]
 		head += 1
 		var current_dist := distance_to_water[pos.y * w + pos.x]
-		if current_dist > 50.0:
+		if current_dist > max_water_dist:
 			continue
 		for neighbor in grid.get_neighbors_4(pos.x, pos.y):
 			var ni := neighbor.y * w + neighbor.x
@@ -102,7 +114,7 @@ func _generate_moisture(grid: TorusGrid, moist_map: PackedFloat32Array, proj: Pl
 	for y in range(h):
 		for x in range(w):
 			var dist := distance_to_water[y * w + x]
-			var water_proximity := clampf(1.0 - dist / 50.0, 0.0, 1.0)
+			var water_proximity := clampf(1.0 - dist / max_water_dist, 0.0, 1.0)
 
 			var noise_var: float
 			var wind_bias: float

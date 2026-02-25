@@ -14,7 +14,7 @@ var _timer: float = 0.0
 var _chunk_offset: int = 0
 
 const TICK_INTERVAL := 2.0
-const CHUNK_SIZE := 1024
+const CHUNK_SIZE := 4096
 const HEIGHT_DELTA_THRESHOLD := 0.008
 
 
