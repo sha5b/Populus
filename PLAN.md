@@ -36,7 +36,7 @@ PART B — NATURE LIVES (no humans yet, planet ecology runs itself)
   Phase 7d: Tectonic Simulation ............................... PLANNED
   Phase 7e: Volumetric Cloud System (cube sphere + fluid) ..... ✅ DONE
   Phase 8:  Flora System (trees grow, spread seeds, burn) ..... ✅ DONE
-  Phase 9:  Fauna System (animals eat, hunt, flee, breed) ..... PLANNED
+  Phase 9:  Fauna System (animals eat, hunt, flee, breed) ..... ✅ DONE
 
 PART C — CIVILIZATION LIVES (tribes run themselves, no player tribe)
   Phase 10: Tribes, Followers & Autonomous Settlement ......... PLANNED
@@ -1137,52 +1137,27 @@ MultiMesh rendering with per-species colors and stage scaling.                  
 
 ### Tasks
 
-- [ ] **9.1** Create `data/def_fauna.gd` — 7 species: deer, wolf, rabbit, bear, eagle, fish, bison. Full stats from DOCS.md.
+- [x] **9.1** `data/def_fauna.gd` — 7 species: deer, wolf, rabbit, bear, eagle, fish, bison with full stats
 
-- [ ] **9.2** Create components: `com_species.gd`, `com_hunger.gd`, `com_predator.gd`, `com_prey.gd`, `com_herd.gd`, `com_reproduction.gd`, `com_migration.gd`, `com_need.gd`
+- [x] **9.2** Components: `com_fauna_species.gd` (new), reused `com_hunger.gd`, `com_predator.gd`, `com_prey.gd`, `com_herd.gd`, `com_reproduction.gd`, `com_migration.gd`, `com_health.gd`, `com_ai_state.gd`
 
-- [ ] **9.3** Create `gen_fauna.gd` — initial placement
-  - Per biome region: spawn herds (herbivores) and solitary/packs (predators)
-  - Fish only in water, eagles only on mountains/grassland
-  - Respect density limits
+- [x] **9.3** `gen_fauna.gd` — biome-aware placement with herd grouping, aquatic/land filtering, 40 cap per species
 
-- [ ] **9.4** Create `sys_fauna_ai.gd` — master state machine per animal
-  - States: IDLE, FORAGING, HUNTING, FLEEING, MATING, SLEEPING, MIGRATING, DYING
-  - Each state delegates to specific logic (see DOCS_SYSTEMS.md for full pseudocode)
+- [x] **9.4** `sys_fauna_ai.gd` — state machine: IDLE → WANDERING → FORAGING → HUNTING → FLEEING → SLEEPING → MIGRATING → DYING. Night sleep, hunger-driven foraging/hunting.
 
-- [ ] **9.5** Create `sys_hunger.gd`
-  - `hunger += hunger_rate * delta` each tick for all fauna
-  - Hunger > max → starvation damage: `health -= starvation_rate * delta`
+- [x] **9.5** `sys_hunger.gd` — hunger increments in game-years, starvation damage when full
 
-- [ ] **9.6** Create `sys_predator_prey.gd`
-  - Predators in HUNTING state: find nearest prey within hunt_range
-  - Chase → in range → deal damage → prey dies → predator eats (hunger -= 60%)
-  - Prey in FLEEING state: move away at flee_speed
+- [x] **9.6** `sys_predator_prey.gd` — nearest-prey search, chase, kill at range 2, hunger reduction on kill, prey fleeing triggers
 
-- [ ] **9.7** Create `sys_herd.gd` — Boids flocking
-  - Separation: steer away from nearby herd members
-  - Cohesion: steer toward herd center
-  - Alignment: match herd velocity
-  - Applied as velocity modifier for herding animals in IDLE/FORAGING/WANDERING states
+- [x] **9.7** `sys_herd.gd` — boids flocking: separation + cohesion with torus-aware wrapping, skips fleeing/sleeping animals
 
-- [ ] **9.8** Create `sys_reproduction.gd`
-  - Mature + cooldown expired + near mate → gestation timer starts
-  - Gestation complete → spawn N offspring (SEED-stage equivalent for animals: small, hungry, near parent)
-  - Hard cap per species per map prevents explosion
+- [x] **9.8** `sys_reproduction.gd` — maturity check, mate proximity search, cooldown, offspring spawning with species caps (15-60 per species)
 
-- [ ] **9.9** Create `sys_migration.gd`
-  - Triggered by: season change (autumn → migrate), biome quality decline
-  - Find tile in preferred_biome within migration range → path there
+- [x] **9.9** `sys_migration.gd` — autumn-triggered, searches 30-tile radius for preferred biome, steps toward target
 
-- [ ] **9.10** Placeholder rendering:
-  - Colored ellipsoids per species. Brown=deer, gray=wolf, white=rabbit, dark brown=bear, gold=eagle
-  - Scale by species size
-  - Debug label: species name + AI state
+- [x] **9.10** `planet_fauna_renderer.gd` — MultiMeshInstance3D per species, SphereMesh ellipsoids, color-coded by species + AI state tinting
 
-- [ ] **9.11** Population balancing:
-  - Per-species hard cap
-  - Carrying capacity = biome fertility * area → limits herbivore count
-  - Predators limited by prey availability naturally (starvation feedback loop)
+- [x] **9.11** Population balancing: per-species hard caps in reproduction, starvation feedback loop for predator/prey balance, hunger gates breeding
 
 ### Verification
 ```

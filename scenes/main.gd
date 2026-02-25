@@ -20,6 +20,7 @@ var atmosphere_node: PlanetAtmosphere
 var rain_system: PlanetRain
 var atmo_grid: AtmosphereGrid
 var flora_renderer: PlanetFloraRenderer
+var fauna_renderer: PlanetFaunaRenderer
 var _debug_label: Label
 
 
@@ -231,6 +232,14 @@ func _generate_terrain() -> void:
 	flora_renderer.setup(projector, grid, world)
 	add_child(flora_renderer)
 
+	var fauna_gen := GenFauna.new()
+	fauna_gen.generate(world, grid, projector, biome_map_data)
+
+	fauna_renderer = PlanetFaunaRenderer.new()
+	fauna_renderer.name = "FaunaRenderer"
+	fauna_renderer.setup(projector, grid, world)
+	add_child(fauna_renderer)
+
 
 func _register_systems() -> void:
 	var sun := get_node("SunLight") as DirectionalLight3D
@@ -304,7 +313,31 @@ func _register_systems() -> void:
 	fire_spread.setup(grid, weather_system, wind_system)
 	world.add_system(fire_spread)
 
-	print("All systems registered (including flora).")
+	var fauna_ai := SysFaunaAi.new()
+	fauna_ai.setup(grid, projector, time_system)
+	world.add_system(fauna_ai)
+
+	var fauna_hunger := SysHunger.new()
+	fauna_hunger.setup(grid)
+	world.add_system(fauna_hunger)
+
+	var predator_prey := SysPredatorPrey.new()
+	predator_prey.setup(grid, projector)
+	world.add_system(predator_prey)
+
+	var herd_system := SysHerd.new()
+	herd_system.setup(grid, projector)
+	world.add_system(herd_system)
+
+	var reproduction := SysReproduction.new()
+	reproduction.setup(grid, projector)
+	world.add_system(reproduction)
+
+	var migration := SysMigration.new()
+	migration.setup(grid, projector, time_system)
+	world.add_system(migration)
+
+	print("All systems registered (including flora + fauna).")
 
 
 func _add_debug_hud() -> void:

@@ -48,11 +48,14 @@ func update(_world: Node, delta: float) -> void:
 			_dead_queue.append(eid)
 			continue
 
-		growth.age += TICK_INTERVAL * GameConfig.TIME_SCALE
+		var game_seconds_per_tick := TICK_INTERVAL * GameConfig.TIME_SCALE
+		var seconds_per_year := float(GameConfig.HOURS_PER_DAY * GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR) * 60.0
+		var years_per_tick := game_seconds_per_tick / seconds_per_year
+		growth.age += years_per_tick
 
 		var fertility := _get_fertility(pos, plant)
-		var effective_rate := growth.growth_rate * fertility
-		growth.growth_progress += effective_rate * TICK_INTERVAL
+		var age_frac := growth.age / growth.max_age if growth.max_age > 0.0 else 1.0
+		growth.growth_progress = clampf(age_frac, 0.0, 0.99)
 
 		_update_stage(growth)
 
@@ -97,7 +100,5 @@ func _update_stage(growth: ComGrowth) -> void:
 		growth.stage = DefEnums.GrowthStage.YOUNG
 	elif p < STAGE_THRESHOLDS[DefEnums.GrowthStage.MATURE]:
 		growth.stage = DefEnums.GrowthStage.MATURE
-	elif p < STAGE_THRESHOLDS[DefEnums.GrowthStage.OLD]:
-		growth.stage = DefEnums.GrowthStage.OLD
 	else:
-		growth.stage = DefEnums.GrowthStage.DEAD
+		growth.stage = DefEnums.GrowthStage.OLD

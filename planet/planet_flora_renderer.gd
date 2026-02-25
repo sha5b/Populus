@@ -112,7 +112,7 @@ func _update_multimesh(type_key: String, instances: Array) -> void:
 		var right := fwd.cross(up).normalized()
 		t.basis = Basis(right, up, fwd) * t.basis
 
-		t.origin = wp + up * final_height * 0.5
+		t.origin = wp
 
 		mm.set_instance_transform(i, t)
 

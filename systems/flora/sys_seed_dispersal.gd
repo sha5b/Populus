@@ -42,7 +42,9 @@ func update(_world: Node, delta: float) -> void:
 			continue
 
 		var seed_comp: ComSeedDispersal = ecs.get_component(eid, "ComSeedDispersal") as ComSeedDispersal
-		seed_comp.timer -= TICK_INTERVAL * GameConfig.TIME_SCALE
+		var secs_per_year := float(GameConfig.HOURS_PER_DAY * GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR) * 60.0
+		var years_per_tick := (TICK_INTERVAL * GameConfig.TIME_SCALE) / secs_per_year
+		seed_comp.timer -= years_per_tick
 		if seed_comp.timer > 0.0:
 			continue
 		seed_comp.timer = seed_comp.interval

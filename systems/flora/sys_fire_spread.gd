@@ -74,7 +74,7 @@ func _process_burning(ecs: EcsWorld) -> void:
 				f.burn_timer = 0.0
 				continue
 
-		f.burn_timer -= TICK_INTERVAL * GameConfig.TIME_SCALE
+		f.burn_timer -= TICK_INTERVAL
 		if f.burn_timer <= 0.0:
 			dead_entities.append(eid)
 
