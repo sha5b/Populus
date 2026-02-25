@@ -13,6 +13,11 @@ config_version=5
 config/name="Populus"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
+run/main_scene="res://scenes/main.tscn"
+
+[autoload]
+
+GameConfig="*res://config/game_config.gd"
 
 [physics]
 

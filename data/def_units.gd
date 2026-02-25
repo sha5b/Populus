@@ -1,0 +1,61 @@
+class_name DefUnits
+
+const UNIT_DATA: Dictionary = {
+	DefEnums.RoleType.BRAVE: {
+		"name": "Brave",
+		"hp": 30.0,
+		"damage": 5.0,
+		"attack_range": 1.0,
+		"speed": 3.0,
+		"mana_per_min": 34.6,
+	},
+	DefEnums.RoleType.WARRIOR: {
+		"name": "Warrior",
+		"hp": 100.0,
+		"damage": 15.0,
+		"attack_range": 1.5,
+		"speed": 2.5,
+		"mana_per_min": 11.3,
+	},
+	DefEnums.RoleType.FIREWARRIOR: {
+		"name": "Firewarrior",
+		"hp": 40.0,
+		"damage": 20.0,
+		"attack_range": 8.0,
+		"speed": 2.8,
+		"mana_per_min": 11.3,
+	},
+	DefEnums.RoleType.PREACHER: {
+		"name": "Preacher",
+		"hp": 50.0,
+		"damage": 0.0,
+		"attack_range": 0.0,
+		"speed": 2.5,
+		"conversion_range": 6.0,
+		"mana_per_min": 11.3,
+	},
+	DefEnums.RoleType.SPY: {
+		"name": "Spy",
+		"hp": 35.0,
+		"damage": 8.0,
+		"attack_range": 1.0,
+		"speed": 3.5,
+		"mana_per_min": 11.3,
+	},
+	DefEnums.RoleType.SHAMAN: {
+		"name": "Shaman",
+		"hp": 80.0,
+		"damage": 10.0,
+		"attack_range": 1.0,
+		"speed": 3.0,
+		"mana_per_min": 66.6,
+	},
+	DefEnums.RoleType.WILDMAN: {
+		"name": "Wildman",
+		"hp": 20.0,
+		"damage": 0.0,
+		"attack_range": 0.0,
+		"speed": 2.0,
+		"mana_per_min": 0.0,
+	},
+}
