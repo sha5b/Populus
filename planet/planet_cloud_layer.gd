@@ -1,35 +1,74 @@
-extends MeshInstance3D
+extends Node3D
 class_name PlanetCloudLayer
 
-var _material: ShaderMaterial
+const MAX_REBUILDS_PER_FRAME := 4
+
+var _projector: PlanetProjector
+var _atmo_grid: AtmosphereGrid
+var _cloud_material: ShaderMaterial
+var _chunk_meshes: Array[MeshInstance3D] = []
+var _rebuild_index: int = 0
+var _cloud_altitude: float = 3.5
 
 
-func setup(planet_radius: float) -> void:
-	var sphere := SphereMesh.new()
-	var cloud_radius := planet_radius + 2.0
-	sphere.radius = cloud_radius
-	sphere.height = cloud_radius * 2.0
-	sphere.radial_segments = 64
-	sphere.rings = 32
-	mesh = sphere
+func setup(proj: PlanetProjector, atmo: AtmosphereGrid) -> void:
+	_projector = proj
+	_atmo_grid = atmo
 
-	var shader := load("res://shaders/clouds.gdshader") as Shader
-	_material = ShaderMaterial.new()
-	_material.shader = shader
-	material_override = _material
+	var shader := load("res://shaders/cloud_volume.gdshader") as Shader
+	_cloud_material = ShaderMaterial.new()
+	_cloud_material.shader = shader
+	_cloud_material.render_priority = 1
 
-
-func set_coverage(value: float) -> void:
-	if _material:
-		_material.set_shader_parameter("cloud_coverage", value)
-
-
-func set_wind(direction: Vector2, speed: float) -> void:
-	if _material:
-		_material.set_shader_parameter("wind_direction", direction)
-		_material.set_shader_parameter("cloud_speed", speed * 0.01)
+	var total := AtmosphereGrid.TOTAL_CHUNKS
+	_chunk_meshes.resize(total)
+	for i in range(total):
+		var mi := MeshInstance3D.new()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.material_override = _cloud_material
+		add_child(mi)
+		_chunk_meshes[i] = mi
 
 
-func set_brightness(value: float) -> void:
-	if _material:
-		_material.set_shader_parameter("brightness", value)
+func update_clouds(_delta: float, _wind_dir: Vector2, _wind_speed: float) -> void:
+	if _atmo_grid == null:
+		return
+
+	var total := AtmosphereGrid.TOTAL_CHUNKS
+	var rebuilt := 0
+	for _i in range(total):
+		if rebuilt >= MAX_REBUILDS_PER_FRAME:
+			break
+
+		var ci := _rebuild_index
+		_rebuild_index = (_rebuild_index + 1) % total
+
+		if not _atmo_grid.is_chunk_dirty_by_idx(ci):
+			continue
+
+		_rebuild_chunk_by_idx(ci)
+		_atmo_grid.clear_chunk_dirty_by_idx(ci)
+		rebuilt += 1
+
+
+func _rebuild_chunk_by_idx(ci: int) -> void:
+	var cpf := AtmosphereGrid.CHUNKS_PER_FACE
+	var face: int = ci / (cpf * cpf)
+	var rem: int = ci % (cpf * cpf)
+	var cv: int = rem / cpf
+	var cu := rem % cpf
+
+	var mesh := CloudMeshGenerator.generate_chunk_mesh(
+		_atmo_grid, face, cu, cv,
+		_cloud_altitude
+	)
+
+	_chunk_meshes[ci].mesh = mesh
+
+
+func set_global_coverage(_coverage: float) -> void:
+	pass
+
+
+func clear_coverage() -> void:
+	pass

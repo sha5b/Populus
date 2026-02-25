@@ -41,6 +41,47 @@ func get_sphere_normal(gx: float, gy: float) -> Vector3:
 	return grid_to_sphere(gx, gy, 0.0).normalized()
 
 
+func cube_sphere_point(face: int, u: float, v: float, altitude: float = 0.0) -> Vector3:
+	var x := u * 2.0 - 1.0
+	var y := v * 2.0 - 1.0
+	var cube_pos: Vector3
+	match face:
+		0: cube_pos = Vector3( 1.0,    y,   -x)
+		1: cube_pos = Vector3(-1.0,    y,    x)
+		2: cube_pos = Vector3(   x,  1.0,   -y)
+		3: cube_pos = Vector3(   x, -1.0,    y)
+		4: cube_pos = Vector3(   x,    y,  1.0)
+		_: cube_pos = Vector3(  -x,    y, -1.0)
+	var dir := cube_pos.normalized()
+	return dir * (radius + altitude)
+
+
+func world_to_cube_face(world_pos: Vector3) -> Array:
+	var dir := world_pos.normalized()
+	var abs_dir := Vector3(absf(dir.x), absf(dir.y), absf(dir.z))
+	var face: int
+	var u: float
+	var v: float
+	if abs_dir.x >= abs_dir.y and abs_dir.x >= abs_dir.z:
+		if dir.x > 0:
+			face = 0; u = -dir.z / dir.x; v = dir.y / dir.x
+		else:
+			face = 1; u = dir.z / dir.x; v = -dir.y / dir.x
+	elif abs_dir.y >= abs_dir.x and abs_dir.y >= abs_dir.z:
+		if dir.y > 0:
+			face = 2; u = dir.x / dir.y; v = -dir.z / dir.y
+		else:
+			face = 3; u = dir.x / -dir.y; v = dir.z / -dir.y
+	else:
+		if dir.z > 0:
+			face = 4; u = dir.x / dir.z; v = dir.y / dir.z
+		else:
+			face = 5; u = -dir.x / -dir.z; v = dir.y / -dir.z
+	u = (u + 1.0) * 0.5
+	v = (v + 1.0) * 0.5
+	return [face, u, v]
+
+
 func height_color(h: float) -> Color:
 	if h < GameConfig.SEA_LEVEL:
 		return Color(0.1, 0.25, 0.6)

@@ -3,8 +3,10 @@ class_name SysWindErosion
 
 var grid: TorusGrid = null
 var wind_system: SysWind = null
+var weather_system: SysWeather = null
 var moisture_map: PackedFloat32Array
 
+var base_wind_erosion_rate: float = 0.001
 var wind_erosion_rate: float = 0.001
 var moisture_threshold: float = 0.2
 
@@ -12,10 +14,11 @@ var _game_hours_acc: float = 0.0
 var _run_interval_hours: float = 12.0
 
 
-func setup(g: TorusGrid, ws: SysWind, moist: PackedFloat32Array) -> void:
+func setup(g: TorusGrid, ws: SysWind, moist: PackedFloat32Array, wea: SysWeather = null) -> void:
 	grid = g
 	wind_system = ws
 	moisture_map = moist
+	weather_system = wea
 
 
 func update(_world: Node, delta: float) -> void:
@@ -27,6 +30,7 @@ func update(_world: Node, delta: float) -> void:
 		return
 	_game_hours_acc -= _run_interval_hours
 
+	_apply_weather_modifiers()
 	_run_batch()
 
 
@@ -63,3 +67,18 @@ func _run_batch() -> void:
 
 	if moved > 100:
 		print("Wind erosion: %d tiles affected" % moved)
+
+
+func _apply_weather_modifiers() -> void:
+	if weather_system == null:
+		wind_erosion_rate = base_wind_erosion_rate
+		return
+
+	var state := weather_system.current_state
+	match state:
+		DefEnums.WeatherState.STORM:
+			wind_erosion_rate = base_wind_erosion_rate * 3.0
+		DefEnums.WeatherState.RAIN:
+			wind_erosion_rate = base_wind_erosion_rate * 0.5
+		_:
+			wind_erosion_rate = base_wind_erosion_rate

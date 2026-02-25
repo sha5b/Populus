@@ -20,26 +20,34 @@
 
 ```
 PART A — FOUNDATION (the planet exists, you can look at it)
-  Phase 0:  Project Setup, ECS Core, Folder Scaffold ........... Week 1
-  Phase 1:  Torus Grid & Heightmap Data ....................... Week 1-2
-  Phase 2:  Sphere Projection & Terrain Mesh .................. Week 2-3
-  Phase 3:  Procedural Terrain Generation ..................... Week 3-4
-  Phase 4:  Biome Assignment & Rendering ...................... Week 4-5
-  Phase 5:  Debug Camera (orbit, zoom, pan) ................... Week 5
+  Phase 0:  Project Setup, ECS Core, Folder Scaffold ........... ✅ DONE
+  Phase 1:  Torus Grid & Heightmap Data ....................... ✅ DONE
+  Phase 2:  Sphere Projection & Terrain Mesh .................. ✅ DONE
+  Phase 3:  Procedural Terrain (Multi-Noise, Minecraft-style) . ✅ DONE
+  Phase 4:  Biome Assignment (Multi-Noise Table Lookup) ....... ✅ DONE
+  Phase 4b: Weather ↔ Erosion Feedback Loop ................... ✅ DONE
+  Phase 5:  Debug Camera (orbit, zoom, pan) ................... ✅ DONE
 
 PART B — NATURE LIVES (no humans yet, planet ecology runs itself)
-  Phase 6:  Time System (clock, day/night, seasons) ........... Week 5-6
-  Phase 7:  Weather System (rain, wind, storms) ............... Week 6-7
-  Phase 8:  Flora System (trees grow, spread seeds, burn) ..... Week 7-9
-  Phase 9:  Fauna System (animals eat, hunt, flee, breed) ..... Week 9-12
+  Phase 6:  Time System (clock, day/night, seasons) ........... ✅ DONE
+  Phase 7:  Weather System (rain, wind, storms) ............... ✅ DONE
+  Phase 7b: Terrain Erosion (hydraulic, thermal, wind, river) . ✅ DONE
+  Phase 7c: Weather & Atmosphere Visuals ...................... ✅ DONE
+  Phase 7d: Tectonic Simulation ............................... PLANNED
+  Phase 7e: Volumetric Cloud System (cube sphere + fluid) ..... ✅ DONE
+  Phase 8:  Flora System (trees grow, spread seeds, burn) ..... ← NEXT
+  Phase 9:  Fauna System (animals eat, hunt, flee, breed) ..... PLANNED
 
 PART C — CIVILIZATION LIVES (tribes run themselves, no player tribe)
-  Phase 10: Tribes, Followers & Autonomous Settlement ......... Week 12-16
-  Phase 11: Buildings, Mana, Population & Training ............ Week 16-19
-  Phase 12: Spells, Terrain Manipulation & Combat ............. Week 19-23
+  Phase 10: Tribes, Followers & Autonomous Settlement ......... PLANNED
+  Phase 11: Buildings, Mana, Population & Training ............ PLANNED
+  Phase 12: Spells, Terrain Manipulation & Combat ............. PLANNED
 
 PART D — PLAYER ENTERS (now the human can interact)
-  Phase 13: Player Tribe, Input, UI, Save/Load ............... Week 23-28
+  Phase 13: Player Tribe, Input, UI, Save/Load ............... PLANNED
+
+PART E — UPGRADES (post-gameplay polish)
+  Phase 14: Voxel Terrain Upgrade (Astroneer-scale) .......... PLANNED
 ```
 
 ---
@@ -117,21 +125,25 @@ populus/
 │
 ├── systems/                                   # ─── ALL SYSTEMS (pure logic, one file = one system) ───
 │   │
-│   │  # ── PART A: Foundation ──
-│   ├── sys_terrain_generation.gd              # one-shot: noise → heightmap
-│   ├── sys_terrain_render.gd                  # heightmap → mesh update
-│   ├── sys_water_render.gd                    # water plane at sea level
-│   ├── sys_biome_assignment.gd                # temp + moisture + altitude → biome
-│   ├── sys_biome_render.gd                    # biome → vertex colors / shader
+│   ├── time/                                  # ── Time & Season ──
+│   │   ├── sys_time.gd                        # game clock, day/night, sun rotation
+│   │   └── sys_season.gd                      # seasonal temp/moisture offsets
 │   │
-│   │  # ── PART B: Nature ──
-│   ├── sys_time.gd                            # advance game clock, emit hour/day/season
-│   ├── sys_day_night.gd                       # light changes, toggle schedules
-│   ├── sys_season.gd                          # modify temp/moisture per season
-│   ├── sys_weather.gd                         # state machine: clear/cloudy/rain/storm
-│   ├── sys_wind.gd                            # wind direction/speed drift
-│   ├── sys_precipitation.gd                   # rain → moisture, snow → slow
+│   ├── weather/                               # ── Weather & Atmosphere ──
+│   │   ├── sys_weather.gd                     # state machine: clear/cloudy/rain/storm
+│   │   ├── sys_wind.gd                        # latitude-dependent wind bands
+│   │   ├── sys_precipitation.gd               # rain → moisture, snow → slow
+│   │   ├── sys_weather_visuals.gd             # connects weather data → cloud/rain/lightning
+│   │   └── sys_atmosphere_fluid.gd            # Navier-Stokes fluid dynamics for clouds
 │   │
+│   ├── erosion/                               # ── Terrain Erosion (weather-linked) ──
+│   │   ├── sys_hydraulic_erosion.gd           # particle-based water erosion (rain × 2-4)
+│   │   ├── sys_thermal_erosion.gd             # slope slumping (winter × 2.5)
+│   │   ├── sys_coastal_erosion.gd             # wave action on shorelines
+│   │   ├── sys_wind_erosion.gd                # aeolian sand transport (storm × 3)
+│   │   └── sys_river_formation.gd             # persistent flow paths + lakes
+│   │
+│   │  # ── Future: Flora & Fauna ──
 │   ├── sys_flora_spawning.gd                  # one-shot: initial plants per biome
 │   ├── sys_flora_growth.gd                    # age, stage advance, death
 │   ├── sys_seed_dispersal.gd                  # wind/water/animal seed spread
@@ -188,13 +200,19 @@ populus/
 │
 ├── planet/                                    # ─── PLANET GEOMETRY (not ECS, pure math/rendering) ───
 │   ├── torus_grid.gd                          # 2D wrapping grid data structure
-│   ├── sphere_projector.gd                    # grid coords ↔ 3D sphere position
+│   ├── planet_projector.gd                    # grid coords  3D sphere + cube sphere projection
 │   ├── planet_mesh.gd                         # ArrayMesh generation from heightmap
-│   └── planet_camera.gd                       # orbital camera (debug + player)
+│   ├── planet_camera.gd                       # orbital camera (debug + player)
+│   ├── planet_cloud_layer.gd                  # volumetric cloud chunk manager (96 MeshInstance3D)
+│   ├── planet_atmosphere.gd                   # atmospheric glow shell
+│   ├── planet_rain.gd                         # planet-local rain/snow emitters (8 GPUParticles3D)
+│   ├── atmosphere_grid.gd                     # cube sphere 3D atmospheric data (6×16×16×8)
+│   └── cloud_mesh_generator.gd                # marching cubes mesh from cloud density field
 │
 ├── generation/                                # ─── PROCEDURAL GENERATION (one-shot helpers) ───
-│   ├── gen_heightmap.gd                       # noise → heightmap
-│   ├── gen_biome.gd                           # temp + moisture → biome map
+│   ├── gen_heightmap.gd                       # multi-noise terrain (5 maps + splines)
+│   ├── gen_biome.gd                           # temperature + moisture maps
+│   ├── gen_biome_assignment.gd                # multi-noise table lookup biome classifier
 │   ├── gen_flora.gd                           # place initial trees/bushes
 │   ├── gen_fauna.gd                           # place initial animals
 │   └── gen_settlement.gd                      # place initial tribes
@@ -202,7 +220,9 @@ populus/
 ├── shaders/                                   # ─── GPU SHADERS ───
 │   ├── terrain.gdshader                       # height-based coloring, biome blending
 │   ├── water.gdshader                         # animated water plane
-│   └── sky.gdshader                           # simple sky gradient
+│   ├── clouds.gdshader                        # procedural cloud billboard shader
+│   ├── cloud_volume.gdshader                  # volumetric cloud mesh shader (vertex colors)
+│   └── atmosphere.gdshader                    # atmospheric fresnel glow
 │
 ├── scenes/                                    # ─── GODOT SCENES ───
 │   └── main.tscn                              # root scene
@@ -434,61 +454,160 @@ No seams at the grid wrap boundary.
 
 ---
 
-## Phase 3: Procedural Terrain Generation
+## Phase 3: Procedural Terrain Generation (Multi-Noise, Minecraft-Style)
 
-**Goal**: Each run generates a unique planet with continents, oceans, mountains, and varied terrain.
+**Goal**: Each run generates a unique planet with continents, oceans, mountains, and varied terrain using multiple interacting noise maps inspired by Minecraft 1.18's multi-noise system.
+
+### Architecture — Multi-Noise Terrain
+
+Like Minecraft 1.18, terrain is shaped by **5 independent noise maps** that interact via **spline curves**:
+
+1. **Continentalness** — How far inland (low = ocean, high = deep continent interior)
+   - Controls base elevation: ocean basins vs continental shelves vs inland highlands
+   - Fractal FBM, low frequency (large features)
+
+2. **Erosion** — How eroded/flat the terrain is (low = rugged peaks, high = flat plains)
+   - Modulates height variance: low erosion → dramatic terrain, high erosion → flat
+   - Fractal FBM, medium frequency
+
+3. **Peaks & Valleys (PV)** — Local terrain drama (high = peaks, low = valleys)
+   - Adds local height variation: ridges, valleys, plateaus
+   - Fractal Ridged noise for sharp peaks
+
+4. **Temperature** — Latitude-based + altitude cooling + noise variation
+   - Used for biome selection, NOT terrain shape
+
+5. **Humidity** — Water proximity + noise + wind patterns
+   - Used for biome selection, NOT terrain shape
+
+**Terrain Height Formula**:
+```
+base_height = spline(continentalness)
+height_variance = spline(1.0 - erosion)
+final_height = base_height + peaks_valleys * height_variance + detail_noise * 0.1
+```
+
+The spline functions create non-linear mappings:
+- Continental spline: flat ocean floor → steep coastal rise → gentle inland plateau
+- Erosion spline: high erosion → squash height variance, low → allow full range
 
 ### Tasks
 
-- [x] **3.1** Create `gen_heightmap.gd`
-  - Uses `FastNoiseLite` (Godot built-in)
-  - **Continental layer**: OpenSimplex2, FBM, freq=0.015, octaves=6, lacunarity=2.0, gain=0.5
-  - **Detail layer**: OpenSimplex2, FBM, freq=0.08, octaves=4, weight=0.3
-  - **Combine**: `h = continental + detail * 0.3`
-  - **Normalize**: shift/scale so ~45% of tiles are below sea level (adjustable)
-  - **Seed**: from `GameConfig.WORLD_SEED` (0 = random)
+- [x] **3.1** Create `gen_heightmap.gd` — Multi-noise terrain generator
+  - ~~Uses 2 noise layers~~
+  - **v2**: Uses 5 noise maps: continentalness, erosion, peaks_valleys, plus detail
+  - Spline-based blending for dramatic terrain variety
+  - Continental shelves, mountain ranges, flat plains emerge naturally
+  - Seed-based reproducibility
 
-- [x] **3.2** Create `gen_biome.gd` (data prep, not rendering yet)
-  - **Temperature map**: base from latitude (`gy/height` → equator hot, poles cold) + altitude cooling (`-height * 0.3`) + noise variation (freq=0.03, weight=0.15)
-  - **Moisture map**: BFS flood fill from water tiles (distance-based falloff) + noise variation + simple prevailing wind bias (east→west moisture transport)
+- [x] **3.2** Create `gen_biome.gd` — Temperature + Humidity maps
+  - **Temperature**: latitude gradient + altitude cooling + noise
+  - **Humidity**: water distance BFS + noise + wind bias
   - Store per-tile: `temperature: float`, `moisture: float`
 
-- [x] **3.3** Register as one-shot: in `main.gd`, call generation before starting the ECS loop
+- [x] **3.3** Register as one-shot in `main.gd`
+
+- [ ] **3.4** Expose noise maps as debug data (continentalness, erosion, PV viewable in HUD)
 
 ### Verification
 ```
-Each run: different continent shapes (or same with fixed seed).
-Console prints: "Generated heightmap. Land: 47%, Water: 53%"
-Sphere shows varied terrain with oceans, hills, mountains.
+Each run: different continent shapes with natural-looking coastlines.
+Mountains clustered in low-erosion zones, not random spikes.
+Flat plains in high-erosion areas.
+Sharp peaks from ridged PV noise.
+Console prints: "Generated heightmap (5 noise maps). Land: 47%, Water: 53%"
 ```
 
 ---
 
-## Phase 4: Biome Assignment & Rendering
+## Phase 4: Biome Assignment & Rendering (Multi-Noise Table Lookup)
 
-**Goal**: Every tile has a biome. The planet is color-coded by biome.
+**Goal**: Every tile has a biome selected from a multi-dimensional lookup table using continentalness, erosion, temperature, and humidity — not simple if/else thresholds.
+
+### Architecture — Minecraft-Style Biome Table
+
+Biome selection uses a **2-stage lookup**:
+
+**Stage 1: Terrain Category** (from continentalness × erosion):
+```
+                Low Erosion          Mid Erosion         High Erosion
+Low Continent   Deep Ocean           Shallow Ocean       Coast
+Mid Continent   Mountain Slopes      Hills               Plains
+High Continent  High Mountains       Plateau             Flat Interior
+```
+
+**Stage 2: Biome Selection** (from temperature × humidity within each terrain category):
+```
+                Dry          Medium       Wet
+Hot             Desert       Savanna      Tropical Forest
+Warm            Steppe       Grassland    Temperate Forest
+Cool            Taiga        Boreal       Boreal Forest
+Cold            Snow/Ice     Tundra       Tundra
+```
+
+Additional rules:
+- **Weirdness noise** (6th noise): when high, spawn variant biomes (bamboo jungle, ice spikes, mushroom fields)
+- **Beach**: coast category + moderate temp
+- **Swamp**: coast/plains + high humidity + warm
+- **Mountain**: overrides based on altitude, temp determines snow cap vs rocky
 
 ### Tasks
 
 - [x] **4.1** Create `data/def_biomes.gd`
-  - BiomeType enum: OCEAN, BEACH, TROPICAL_FOREST, DESERT, SAVANNA, TEMPERATE_FOREST, GRASSLAND, STEPPE, TUNDRA, TAIGA, BOREAL_FOREST, MOUNTAIN, SNOW_ICE, SWAMP
-  - Per biome: `color`, `tree_density`, `fauna_density`, `movement_cost`, `fertility`, `flammability`
+  - BiomeType enum + per-biome properties (color, tree_density, fertility, etc.)
 
-- [x] **4.2** Create `generation/gen_biome_assignment.gd` (static Whittaker classifier)
-  - One-shot system: for each tile, look up `(temperature, moisture, altitude) → BiomeType` using Whittaker thresholds
-  - Override rules: altitude > mountain_threshold → MOUNTAIN, very_high + cold → SNOW_ICE, very_low + wet → SWAMP, underwater → OCEAN, adjacent to ocean + low → BEACH
+- [x] **4.2** Create `generation/gen_biome_assignment.gd`
+  - ~~Simple Whittaker classifier~~
+  - **v2**: Multi-noise table lookup using continentalness, erosion, temperature, humidity
+  - 2-stage: terrain category → biome selection
+  - Weirdness noise for rare variant biomes
 
-- [x] **4.3** Biome rendering via `planet_mesh._get_tile_color()` using biome_map
-  - Update vertex colors on planet mesh based on biome color
-  - Smooth blending at biome borders (average neighbor colors)
-
-- [x] **4.4** Terrain shader uses vertex colors (biome-driven)
+- [x] **4.3** Biome rendering via vertex colors
+- [x] **4.4** Terrain shader uses vertex colors
 
 ### Verification
 ```
-Planet shows: green forests, yellow deserts, white snow caps, blue oceans,
-brown mountains, dark green tropics. No desert at poles. No snow at equator.
-Biome distribution looks geographically plausible.
+Planet shows geographically plausible biome distribution.
+Deserts only in hot dry interior regions, not random patches.
+Tropical forests on hot humid coasts. Snow only at poles + high mountains.
+Mountain biomes only where erosion is low and continentalness is high.
+Adjacent biomes make geographic sense (no desert next to tundra).
+```
+
+---
+
+## Phase 4b: Weather ↔ Erosion Feedback Loop
+
+**Goal**: Weather actively drives erosion. Rain causes hydraulic erosion, temperature swings drive thermal erosion, wind drives aeolian erosion. Erosion reshapes terrain, which changes biomes over time.
+
+### Tasks
+
+- [x] **4b.1** Link weather state to hydraulic erosion intensity
+  - RAIN: erosion_rate × 2.0, particles_per_batch × 1.5
+  - STORM: erosion_rate × 4.0, particles_per_batch × 3.0
+  - CLEAR: erosion_rate × 0.3 (minimal baseline)
+  - FOG: erosion_rate × 0.5 (light moisture)
+
+- [x] **4b.2** Link temperature to thermal erosion
+  - Freeze-thaw: thermal_rate increases when temperature oscillates near freezing
+  - Winter: thermal_rate × 2.5, Spring: × 1.8, Autumn: × 1.3, Summer: × 0.8
+
+- [x] **4b.3** Link wind to aeolian erosion
+  - wind_erosion_rate scales with actual wind speed from SysWind
+  - Storm winds: 3× erosion rate
+  - Rain: 0.5× (wet soil resists)
+
+- [ ] **4b.4** Periodic biome reassignment
+  - Every N game-days, re-run biome assignment on tiles where terrain changed significantly
+  - Track `height_at_last_biome_check` per tile, only reassign if delta > threshold
+  - Smooth transitions: biome changes interpolate vertex colors over time
+
+### Verification
+```
+After prolonged rain: visible river valleys deepen, sediment at coastlines.
+After winter: mountain slopes show more scree (thermal erosion).
+Windy deserts: dunes shift slowly over time.
+Biomes slowly evolve: a drying region transitions grassland → steppe → desert.
 ```
 
 ---
@@ -671,6 +790,94 @@ After 5 game years:
 
 ---
 
+## Phase 7d: Tectonic Simulation, Earthquakes, Tsunamis & Volcanism
+
+**Goal**: The planet has tectonic plates that drift slowly. Plate boundaries produce earthquakes, volcanic eruptions, and tsunamis. These are rare, dramatic events that reshape terrain and threaten settlements.
+
+### Tasks
+
+- [ ] **7d.1** Create `generation/gen_tectonic_plates.gd` — Initial plate assignment
+  - Seed N plates (6-10) using Voronoi regions on the torus grid
+  - Each plate: id, drift_direction (Vector2), drift_speed (0.001-0.005), density (continental vs oceanic)
+  - Store `plate_id` per tile in `PackedInt32Array`
+  - Continental plates: higher base elevation, oceanic plates: lower
+
+- [ ] **7d.2** Create `systems/sys_plate_tectonics.gd` — Slow plate drift
+  - Every game-year: shift plate boundaries slightly in drift direction
+  - **Convergent boundaries** (plates moving toward each other):
+    - Continental-continental → mountain building (raise height at boundary +0.02/year)
+    - Oceanic-continental → subduction (lower oceanic side, raise continental, volcanic arc)
+    - Oceanic-oceanic → trench formation + island arc volcanoes
+  - **Divergent boundaries** (plates moving apart):
+    - Create rift valleys, mid-ocean ridges (raise height slightly)
+    - New crust at boundary (height = sea level)
+  - **Transform boundaries** (plates sliding past):
+    - Earthquake risk zone, no height change
+
+- [ ] **7d.3** Create `systems/sys_earthquake.gd` — Seismic events
+  - Probability per game-year at plate boundaries proportional to stress accumulation
+  - Stress accumulates each year at convergent/transform boundaries
+  - When stress > threshold → earthquake event:
+    - Magnitude 1-5 scale (exponential energy)
+    - Shake nearby tiles: randomly offset height ±0.01-0.05
+    - Damage buildings within radius (future phase hook)
+    - Console: "Earthquake! Magnitude 3.2 at (45, 67)"
+  - Stress resets after quake
+
+- [ ] **7d.4** Create `systems/sys_tsunami.gd` — Water displacement waves
+  - Triggered by: underwater earthquake (magnitude ≥ 3), volcanic eruption in ocean
+  - Wave propagation: BFS from epicenter outward at 2 tiles/game-second
+  - Wave height decreases with distance: `h = magnitude * 0.5 / sqrt(distance)`
+  - When wave hits coastline:
+    - Temporarily raise water level on coastal tiles
+    - Flood inland tiles 1-3 deep depending on wave height
+    - Damage/destroy entities on flooded tiles (future phase hook)
+    - Erosion boost on hit tiles
+  - Wave dissipates after reaching all shores or traveling max distance
+  - Visual: temporary height pulse on water mesh vertices (shader uniform)
+
+- [ ] **7d.5** Create `systems/sys_volcanism.gd` — Volcanic eruptions
+  - Volcanoes spawn at: convergent boundaries, hotspots (random, rare)
+  - Track volcanic_pressure per volcano tile (accumulates slowly)
+  - When pressure > threshold → eruption:
+    - Raise height dramatically at eruption site (+0.1-0.3)
+    - Deposit material in cone shape (radius 3-5, height falloff)
+    - Lava flow: trace downhill path from summit, raise height along path
+    - Set tiles along lava path as `is_burning` (kills flora/fauna)
+    - Ash cloud: increase cloud coverage locally, reduce temperature in radius 10 for 1 season
+  - Dormant period after eruption (50-200 game years)
+  - Volcanic soil: high fertility bonus after cooling (10 game years)
+
+- [ ] **7d.6** Create `shaders/water_wave.gdshader` — Tsunami visual
+  - Modify water shader to accept wave_positions array + wave_heights
+  - Vertex displacement ring expanding from epicenter
+  - Fade out over time
+
+- [ ] **7d.7** Integrate plate data into terrain generation
+  - `gen_heightmap.gd` uses plate boundaries to bias continental vs oceanic elevation
+  - Mountain ranges align with convergent boundaries
+  - Ocean trenches at subduction zones
+
+- [ ] **7d.8** Performance: tectonic processing
+  - Plate drift: once per game-year (very cheap)
+  - Stress calculation: once per game-year
+  - Earthquake check: once per game-month
+  - Tsunami propagation: real-time BFS during event (batched, max 100 steps/frame)
+
+### Verification
+```
+After 50 game years:
+- Mountain ranges grow slowly at convergent boundaries
+- Occasional earthquake messages: "Earthquake! Magnitude 2.7 at (34, 89)"
+- Rare tsunami from undersea quake: visible wave ring on water surface
+- 1-2 volcanic eruptions: visible cone growth, lava trail, ash effects
+- Volcanic soil enriches nearby biomes after cooling
+- Plate boundaries visible as lines of seismic activity
+- Terrain at divergent boundaries shows rift features
+```
+
+---
+
 ## Phase 7c: Weather & Atmosphere Visuals
 
 **Goal**: Weather isn't just data — you see clouds drifting, rain falling, snow settling, lightning cracking, and fog rolling in. The planet has an atmospheric glow visible from orbit.
@@ -753,6 +960,106 @@ FOG: Ground fog obscures terrain, reduced visibility, muted atmosphere.
 SNOW: White particles drifting, terrain gradually turns white in cold biomes.
 Day/night: Clouds darken at night, atmosphere shifts orange at dawn/dusk.
 Transitions: All changes smooth, no popping.
+```
+
+---
+
+## Phase 7e: Volumetric Cloud System (Voxel Meshes + Fluid Dynamics)
+
+**Goal**: Replace flat billboard cloud patches with true 3D volumetric cloud meshes generated from a density field. Clouds form, evolve, and dissipate based on atmospheric fluid dynamics — moisture advection, condensation, evaporation, and wind shear. Different cloud types (cumulus, stratus, cirrus) emerge naturally from the simulation.
+
+### Architecture
+
+#### Atmospheric Grid (Cube Sphere)
+- 3D grid on cube sphere: 6 faces × 16×16 × 8 altitude layers (no pole convergence)
+- Each cell stores: `moisture`, `temperature`, `pressure`, `wind_u/v/w`, `cloud_density`
+- Cube sphere projection eliminates lat/lon pole hotspots — uniform cell distribution
+- PlanetProjector provides `cube_sphere_point()` and `world_to_cube_face()` mapping
+
+#### Fluid Dynamics (Simplified Navier-Stokes)
+- **Advection**: moisture and temperature carried by wind velocity field
+- **Pressure solve**: high pressure flows to low pressure (drives wind convergence/divergence)
+- **Buoyancy**: warm moist air rises, cool dry air sinks
+- **Coriolis force**: deflects horizontal wind based on latitude (already in wind bands)
+- **Condensation**: when moisture > saturation threshold (temp-dependent) → cloud density increases, releases latent heat (warms cell, drives further uplift)
+- **Evaporation**: when moisture < saturation → cloud density decreases
+- **Precipitation**: when cloud density exceeds threshold → rain/snow forms, depletes moisture
+
+#### Cloud Mesh Generation
+- For each atmospheric column: if any cell has cloud density > threshold → generate 3D mesh
+- Use **metaball / marching cubes** on the density field to produce smooth blobby cloud geometry
+- Cloud mesh is an ArrayMesh with vertex colors (white core, grey edges, dark underside)
+- Meshes regenerated every N frames (not every frame) to amortize cost
+- LOD: far clouds use simpler geometry (fewer marching cubes steps)
+
+#### Cloud Types (Emergent)
+- **Cumulus** (puffy): strong vertical uplift, high moisture, moderate altitude → tall dense blobs
+- **Stratus** (flat layers): stable atmosphere, uniform moisture → thin horizontal sheets
+- **Cirrus** (wispy): high altitude, low moisture, strong wind shear → stretched thin wisps
+- **Cumulonimbus** (storm): extreme uplift + moisture → very tall, dark, triggers lightning/heavy rain
+
+### Tasks
+
+- [x] **7e.1** Create `planet/atmosphere_grid.gd` — 3D atmospheric data grid
+  - ~~32×32×8 lat/lon grid~~ **v2**: Cube sphere 6 faces × 16×16 × 8 altitude (no pole hotspots)
+  - Each cell: moisture, temperature, pressure, wind velocity (u/v/w), cloud_density
+  - Initialize from biome data via PlanetProjector cube sphere projection
+  - Dirty chunk tracking for efficient mesh rebuilds
+
+- [x] **7e.2** Create `systems/weather/sys_atmosphere_fluid.gd` — Fluid dynamics simulation
+  - Runs every 0.5 game-seconds, iterates all 6 faces × 16×16 × 8 altitude
+  - **Advection**: semi-Lagrangian moisture/temperature transport along wind field
+  - **Pressure**: ideal gas law, gradient drives wind convergence
+  - **Coriolis**: latitude-dependent wind deflection (computed from world position)
+  - **Buoyancy**: warm moist air rises, cool dry air sinks
+  - **Condensation/Evaporation**: saturation curve → cloud_density changes + latent heat
+  - **Precipitation**: dense clouds drain moisture downward
+  - **Weather injection**: state-dependent moisture/updraft injection (STORM=high, CLEAR=low)
+
+- [x] **7e.3** Create `planet/cloud_mesh_generator.gd` — Marching cubes on cloud density
+  - Full 256-case marching cubes with edge + triangle lookup tables
+  - Per-chunk: 4×4 face cells × 8 altitude → ArrayMesh with vertices, normals, vertex colors
+  - Vertex colors: bright sun-facing, dark undersides, grey edges (from face normal dot product)
+  - World positions from `atmo_grid.get_cell_world_pos()` (cube sphere projected)
+
+- [x] **7e.4** Create `planet/planet_cloud_layer.gd` v2 — Manages cloud mesh instances
+  - 6 faces × 4×4 chunks per face = 96 MeshInstance3D nodes
+  - Round-robin rebuild: max 4 dirty chunks per frame
+  - Reads dirty flags from AtmosphereGrid, clears after rebuild
+
+- [x] **7e.5** Create cloud material/shader — `shaders/cloud_volume.gdshader`
+  - Spatial shader, blend_mix, cull_back, depth_draw_never
+  - Uses VERTEX_COLOR for per-vertex lighting
+  - Fresnel rim for atmospheric scattering at cloud edges
+
+- [x] **7e.6** Integrate atmosphere_grid with existing weather system
+  - Weather state → moisture injection rates (CLEAR=0.005, STORM=0.06)
+  - SysWind latitude bands feed into atmosphere grid wind field
+  - SysAtmosphereFluid registered in main.gd ECS loop before weather visuals
+  - Cloud types emerge naturally from simulation
+
+- [ ] **7e.7** Connect rain/snow to cloud positions
+  - `PlanetRain` emitters positioned under cloud chunks that are precipitating
+  - Rain intensity proportional to precipitation rate from atmosphere sim
+
+- [x] **7e.8** Performance optimization
+  - Atmosphere sim: 0.5s tick interval, cube sphere eliminates pole overdraw
+  - Mesh regeneration: max 4 chunks per frame, round-robin
+  - Shader: vertex colors only, no per-pixel noise
+
+### Verification
+```
+CLEAR weather: Few small cumulus puffs scattered, 3D blobby shapes visible.
+CLOUDY: More cumulus, some stratus layers, clouds are solid 3D objects not flat planes.
+RAIN: Dark thick clouds overhead, rain falls from cloud undersides toward planet center.
+STORM: Towering cumulonimbus columns, heavy rain, lightning from tallest clouds.
+FOG: Low-altitude stratus blanket hugging terrain.
+Wind bands: Clouds at different latitudes drift at different speeds/directions.
+Zoom in: Clouds have smooth blobby geometry, vertex-colored lighting.
+Zoom out: Clouds simplify to lower LOD, still look good from orbit.
+Performance: 30+ FPS with full cloud system active.
+Fluid dynamics: Moisture visibly moves with wind, clouds form where air rises,
+  dissipate where air descends. Weather patterns emerge naturally.
 ```
 
 ---
@@ -1158,23 +1465,29 @@ All 3 enemy tribes play competently against each other AND the player.
 ## Dependency Graph
 
 ```
-Phase 0 (ECS + Scaffold)
+Phase 0 (ECS + Scaffold) ✅
   ↓
-Phase 1 (Grid Data)
+Phase 1 (Grid Data) ✅
   ↓
-Phase 2 (Sphere Mesh)
+Phase 2 (Sphere Mesh) ✅
   ↓
-Phase 3 (Terrain Gen)
+Phase 3 (Multi-Noise Terrain) ✅
   ↓
-Phase 4 (Biomes)
+Phase 4 (Multi-Noise Biomes) ✅
   ↓
-Phase 5 (Camera) ←── can now inspect the world
+Phase 5 (Camera) ✅ ←── can now inspect the world
   ↓
-  ├──→ Phase 6 (Time)
+  ├──→ Phase 6 (Time) ✅
   │      ↓
-  │    Phase 7 (Weather) ──┐
-  │                         │
-  ├──→ Phase 8 (Flora) ←───┘ weather affects flora
+  │    Phase 7 (Weather) ✅
+  │      ├── 7b (Erosion) ✅
+  │      ├── 7c (Weather Visuals) ✅
+  │      ├── 7d (Tectonics) ⬜
+  │      └── 7e (Volumetric Clouds) ✅
+  │      ↓
+  │    Phase 4b (Weather ↔ Erosion) ✅ ←── rain/wind/temp drive erosion
+  │      ↓
+  ├──→ Phase 8 (Flora) ← NEXT ←── weather affects flora
   │      ↓
   └──→ Phase 9 (Fauna) ←── fauna eats flora, disperses seeds
          ↓
@@ -1185,6 +1498,122 @@ Phase 5 (Camera) ←── can now inspect the world
        Phase 12 (Spells + Combat + Tribal AI)
          ↓
        Phase 13 (Player Interaction)
+         ↓
+       Phase 14 (Voxel Terrain Upgrade) ←── post-gameplay
+```
+
+---
+
+## Phase 14: Voxel Terrain Upgrade (Astroneer-Scale)
+
+**Goal**: Replace the 2D heightmap with a full 3D voxel terrain system. Enables caves, overhangs, arches, tunnels, deformable terrain, and subsurface layers. Inspired by Astroneer's marching cubes approach.
+
+### Why This Is Separate
+The current 2D heightmap (Phase 2-3) works well for surface-level gameplay and is sufficient for Phases 8-13. The voxel upgrade is a **major architectural change** that touches rendering, physics, pathfinding, and storage. It should be done after core gameplay is stable.
+
+### Architecture: Astroneer-Style Voxel Planet
+
+#### Data Model
+- Replace `TorusGrid` 2D height array with `VoxelGrid` 3D density array
+- Each voxel stores: `density: float` (-1.0 = air, +1.0 = solid), `material: int` (rock, soil, sand, ice, lava)
+- Spherical mapping: voxel grid wraps around planet center, gravity points inward
+- Resolution: 256×256×64 (surface band) — ~4M voxels per planet
+
+#### Chunk System
+- Divide voxel grid into chunks (16×16×16 voxels each)
+- Only load/mesh chunks near camera + surface chunks visible from orbit
+- Chunk states: UNLOADED → LOADED → MESHED → VISIBLE
+- Dirty flag per chunk: only re-mesh when voxels change
+
+#### Marching Cubes Polygonization
+- Per-chunk: run marching cubes on density field to produce triangle mesh
+- Smooth normals from density gradient
+- Vertex colors from material type
+- Generate collision mesh from same triangles
+
+### Tasks
+
+- [ ] **14.1** Create `planet/voxel_grid.gd` — 3D density + material storage
+  - Spherical coordinate system: (r, theta, phi) mapped to voxel indices
+  - `get_density(x, y, z) -> float`, `set_density(x, y, z, val)`
+  - `get_material(x, y, z) -> int`
+  - Wrapping on theta/phi axes (torus topology preserved)
+  - Efficient storage: only allocate chunks that contain surface (sparse)
+
+- [ ] **14.2** Create `planet/voxel_chunk.gd` — Single 16³ chunk
+  - Stores local density + material arrays
+  - `is_dirty: bool` flag for re-meshing
+  - `mesh_instance: MeshInstance3D` for rendered geometry
+  - `generate_mesh()` — run marching cubes, output ArrayMesh
+
+- [ ] **14.3** Create `planet/marching_cubes.gd` — Polygonization algorithm
+  - Standard marching cubes lookup tables (256 cases)
+  - Input: 8 corner densities per cube → output: triangles
+  - Smooth vertex interpolation along edges based on density values
+  - Normal calculation from density gradient (central differences)
+  - Material blending at transitions
+
+- [ ] **14.4** Create `planet/voxel_chunk_manager.gd` — LOD + streaming
+  - Track camera position, load/unload chunks based on distance
+  - LOD levels: L0 (full detail, near camera), L1 (half res), L2 (quarter res, orbit view)
+  - Chunk loading queue: max N chunks meshed per frame to avoid stuttering
+  - Surface-only optimization: for orbit view, only mesh the outermost shell
+
+- [ ] **14.5** Create `generation/gen_voxel_terrain.gd` — Procedural 3D density
+  - Surface layer: 3D noise field, positive below surface, negative above
+  - Caves: subtract 3D worm noise (turbulent sine paths through density)
+  - Overhangs: anisotropic noise (stronger horizontal than vertical)
+  - Biome layers: different material types at different depths
+    - Topsoil (0-2 voxels deep): soil/sand/snow based on biome
+    - Subsoil (2-8): clay/gravel
+    - Bedrock (8+): rock
+  - Ore veins: small positive-density blobs of special materials at depth
+
+- [ ] **14.6** Create `systems/sys_terrain_deformation.gd` — Runtime terrain editing
+  - `deform_sphere(center: Vector3, radius: float, amount: float)` — add/remove terrain
+  - Used by: spell effects (volcano, earthquake, swamp), player terraform tool
+  - Marks affected chunks as dirty
+  - Recalculate biome/moisture for exposed surfaces
+
+- [ ] **14.7** Migrate existing systems to voxel grid
+  - `sys_hydraulic_erosion.gd` → modify surface voxel density instead of height
+  - `sys_thermal_erosion.gd` → same
+  - `sys_river_formation.gd` → carve river channels by removing voxels
+  - `sys_volcanism.gd` → add voxels for lava/ash deposits
+  - `gen_biome.gd` → sample surface voxels for temperature/moisture
+  - `planet_mesh.gd` → replaced by `voxel_chunk_manager.gd`
+  - `PlanetProjector` → updated to work with voxel coords
+
+- [ ] **14.8** Cave system generation
+  - Worm caves: 3D turbulent noise paths through subsurface
+  - Caverns: large negative density spheres at depth
+  - Cave biomes: crystal caves (ice biome), lava tubes (volcanic), fungal caves (forest)
+  - Cave flora/fauna: special species that only spawn underground
+  - Stalactites/stalagmites: small positive density spikes in caves
+
+- [ ] **14.9** Performance optimization
+  - Mesh generation on background thread (Godot 4 threading)
+  - Greedy meshing: merge coplanar faces to reduce triangle count
+  - Frustum culling per chunk
+  - Occlusion: skip chunks fully behind other chunks
+  - Memory budget: cap loaded chunks, LRU eviction for distant chunks
+  - Target: 60 FPS with 500m view distance, 30 FPS at orbit view
+
+- [ ] **14.10** Transition plan (heightmap → voxel)
+  - Keep heightmap system working during transition (feature flag)
+  - `convert_heightmap_to_voxels(grid: TorusGrid) -> VoxelGrid` — migration utility
+  - Run both systems in parallel for testing
+  - Once voxel system is stable: remove old heightmap code
+
+### Verification
+```
+Terrain renders correctly as smooth surface from orbit (same visual as heightmap).
+Zooming in: terrain has smooth marching-cubes geometry, no blocky voxels visible.
+Caves visible when camera enters underground.
+Deform terrain with debug tool: terrain updates in real-time, only local chunk rebuilds.
+Performance: 60 FPS at ground level, 30+ FPS at orbit.
+All existing systems (erosion, biomes, flora, fauna) work with voxel grid.
+Save/load preserves terrain modifications.
 ```
 
 ---

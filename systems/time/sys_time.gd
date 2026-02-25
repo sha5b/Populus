@@ -19,10 +19,10 @@ func update(world: Node, delta: float) -> void:
 
 	var total_hours := int(game_time / 60.0)
 	hour = total_hours % GameConfig.HOURS_PER_DAY
-	day = total_hours / GameConfig.HOURS_PER_DAY
-	var season_index := (day / GameConfig.DAYS_PER_SEASON) % GameConfig.SEASONS_PER_YEAR
+	day = int(total_hours / GameConfig.HOURS_PER_DAY)
+	var season_index := int(day / GameConfig.DAYS_PER_SEASON) % GameConfig.SEASONS_PER_YEAR
 	season = season_index
-	year = day / (GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR)
+	year = int(day / (GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR))
 
 	if hour != _prev_hour:
 		_prev_hour = hour

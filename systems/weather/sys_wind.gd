@@ -1,0 +1,79 @@
+extends System
+class_name SysWind
+
+var direction: Vector2 = Vector2.RIGHT
+var speed: float = 1.0
+
+var weather_system: SysWeather = null
+
+var _noise: FastNoiseLite
+var _time_acc: float = 0.0
+
+
+func _init() -> void:
+	_noise = FastNoiseLite.new()
+	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_noise.frequency = 0.1
+	_noise.seed = randi()
+
+
+func update(_world: Node, delta: float) -> void:
+	_time_acc += delta * GameConfig.TIME_SCALE * 0.005
+
+	var perturbation := _noise.get_noise_1d(_time_acc) * 0.3
+	var base_angle := 0.0 + perturbation
+	direction = Vector2(cos(base_angle), sin(base_angle))
+
+	var base_speed := 1.5 + _noise.get_noise_1d(_time_acc + 100.0) * 0.5
+	if weather_system:
+		match weather_system.current_state:
+			DefEnums.WeatherState.STORM:
+				base_speed += 3.0
+			DefEnums.WeatherState.RAIN:
+				base_speed += 1.0
+			DefEnums.WeatherState.CLOUDY:
+				base_speed += 0.3
+
+	speed = maxf(base_speed, 0.2)
+
+
+func get_wind_at_latitude(lat_fraction: float) -> Vector2:
+	var lat := (lat_fraction - 0.5) * 2.0
+	var abs_lat := absf(lat)
+	var band_dir: float
+	var band_speed: float
+
+	if abs_lat < 0.25:
+		band_dir = -1.0
+		band_speed = 0.8
+	elif abs_lat < 0.5:
+		band_dir = 1.0
+		band_speed = 1.5
+	elif abs_lat < 0.75:
+		band_dir = 1.0
+		band_speed = 1.0
+	else:
+		band_dir = -1.0
+		band_speed = 0.5
+
+	var meridional := 0.0
+	if lat > 0:
+		meridional = -0.2
+	else:
+		meridional = 0.2
+
+	return Vector2(band_dir * band_speed, meridional) + direction * speed * 0.1
+
+
+func get_wind_string() -> String:
+	var compass := _direction_to_compass()
+	return "%s %.1f m/s" % [compass, speed]
+
+
+func _direction_to_compass() -> String:
+	var angle := atan2(direction.y, direction.x)
+	if angle < 0:
+		angle += TAU
+	var idx := int(round(angle / (TAU / 8.0))) % 8
+	var names := ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+	return names[idx]

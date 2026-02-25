@@ -4,7 +4,7 @@ class_name PlanetCamera
 var orbit_distance: float = 150.0
 var orbit_min: float = 55.0
 var orbit_max: float = 500.0
-var zoom_speed: float = 10.0
+var zoom_speed: float = 1.0
 
 var yaw: float = 0.0
 var pitch: float = -0.3

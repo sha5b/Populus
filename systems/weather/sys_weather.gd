@@ -5,7 +5,7 @@ var current_state: int = DefEnums.WeatherState.CLEAR
 var time_system: SysTime = null
 
 var _transition_timer: float = 0.0
-var _next_check: float = 45.0
+var _next_check: float = 120.0
 
 const TRANSITION_TABLE := {
 	DefEnums.WeatherState.CLEAR: {
@@ -48,7 +48,7 @@ func update(_world: Node, delta: float) -> void:
 	if _transition_timer < _next_check:
 		return
 	_transition_timer = 0.0
-	_next_check = randf_range(30.0, 60.0)
+	_next_check = randf_range(90.0, 180.0)
 	_try_transition()
 
 
