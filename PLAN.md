@@ -589,6 +589,174 @@ Wind direction drifts smoothly.
 
 ---
 
+## Phase 7b: Terrain Evolution — Erosion, Rivers & Geological Processes
+
+**Goal**: The terrain is alive — water carves rivers, slopes crumble, wind sculpts deserts, coastlines erode, and sediment accumulates. The world visibly changes over time.
+
+### Tasks
+
+- [x] **7b.1** Create `sys_hydraulic_erosion.gd` — Particle-based (snowball/raindrop) hydraulic erosion
+  - Drop N virtual water particles per tick on random land tiles (biased toward high rainfall areas)
+  - Each particle traces downhill using surface normals, carrying sediment
+  - **Erosion**: particle picks up sediment proportional to speed × slope × rock hardness
+  - **Deposition**: particle deposits sediment when speed decreases (flat area, pool, coast)
+  - **Parameters**: `erosion_rate`, `deposition_rate`, `friction`, `max_iterations`, `particles_per_tick`
+  - Accumulates over game time → rivers carve valleys, deltas form at coastlines
+  - Only runs on above-sea-level tiles
+
+- [x] **7b.2** Create `sys_thermal_erosion.gd` — Slope-based material slumping
+  - For each tile pair (tile + neighbor): if height difference > `talus_angle` threshold
+  - Transfer material from higher to lower: `transfer = (diff - talus) * thermal_rate * delta`
+  - Creates smooth slopes, scree fields at mountain bases, rounded hills
+  - **Parameters**: `talus_angle` (0.3 default), `thermal_rate` (0.01)
+  - Runs every N game-hours (not every frame — periodic batch)
+
+- [x] **7b.3** Create `sys_coastal_erosion.gd` — Wave action on shorelines
+  - Identify coastal tiles (land adjacent to ocean)
+  - Lower coastal tile height by `wave_erosion_rate * delta`
+  - Rate modified by: wave energy (wind speed × fetch distance), rock hardness
+  - Creates beaches, cliffs, sea stacks over long periods
+  - Deposits eroded material as shallow underwater sediment nearby
+
+- [x] **7b.4** Create `sys_wind_erosion.gd` — Aeolian processes
+  - Active in dry biomes (DESERT, STEPPE) and beaches
+  - Pick up fine sediment from exposed dry tiles, deposit downwind
+  - Rate = `wind_speed * dryness_factor * wind_erosion_rate * delta`
+  - Creates sand dunes (height accumulation downwind), desert pavements
+  - Only operates where moisture < 0.2 (dry surfaces)
+
+- [x] **7b.5** Create `sys_river_formation.gd` — Persistent water flow paths
+  - After hydraulic erosion accumulates: detect tiles where water consistently flows
+  - Trace flow paths: from high points, follow steepest descent to sea/lake
+  - Tiles with persistent flow → mark as `is_river = true`, lower height slightly
+  - River tiles increase local moisture for neighboring tiles (+0.3 moisture radius 3)
+  - Rivers merge (confluences) and widen downstream
+  - Lakes form in enclosed basins (fill until overflow → outflow river)
+
+- [x] **7b.6** Sediment tracking (integrated into hydraulic erosion deposition) — Long-term geological accumulation
+  - Track sediment_depth per tile (separate from rock height)
+  - Sediment increases fertility (good for flora)
+  - River deltas: high sediment deposit at river mouths → flat fertile land
+  - Volcanic tiles (from spells later): deposit mineral-rich sediment
+
+- [x] **7b.7** Update `planet_mesh` — dirty flag + periodic rebuild every 5s in main._process
+  - Dirty flag system: when `sys_*_erosion` modifies heights, mark affected region
+  - In `sys_terrain_render` (or main._process): if dirty → `planet_mesh.update_region()`
+  - Rebuild biome assignments for significantly changed tiles
+
+- [ ] **7b.8** Add terrain hardness property (deferred — biome-based hardness) to biomes/tiles
+  - Mountain/rock = high hardness (slow erosion)
+  - Sand/beach = low hardness (fast erosion)
+  - Frozen = very high hardness (winter slows erosion)
+  - Store in `com_tile` or as a parallel grid
+
+- [x] **7b.9** Performance: batch erosion (hydraulic=1h, thermal=6h, coastal/wind=12h, rivers=seasonal)
+  - Hydraulic erosion: process 100-500 particles per game-hour (not per frame)
+  - Thermal erosion: run every 6 game-hours as a batch pass
+  - Coastal/wind: run every 12 game-hours
+  - River recalculation: run every game-season (expensive, infrequent)
+
+### Verification
+```
+After 5 game years:
+- Visible river valleys carved from mountains to coast
+- Mountain slopes are smoother than initial generation
+- Sediment deltas visible at river mouths (slightly raised flat land)
+- Desert dunes shift with wind direction
+- Coastlines show erosion (retreated from original line)
+- Console: "Hydraulic erosion: 50000 particles, avg sediment moved: 0.003"
+- Console: "Rivers formed: 12 rivers, 3 lakes"
+- Mesh updates are smooth, no visible popping
+```
+
+---
+
+## Phase 7c: Weather & Atmosphere Visuals
+
+**Goal**: Weather isn't just data — you see clouds drifting, rain falling, snow settling, lightning cracking, and fog rolling in. The planet has an atmospheric glow visible from orbit.
+
+### Tasks
+
+- [x] **7c.1** Create `shaders/clouds.gdshader` — Procedural cloud layer
+  - Rendered on a sphere mesh slightly larger than the planet (radius = planet + 2.0)
+  - Fragment shader: layered FBM noise scrolling with wind direction + time
+  - `cloud_coverage` uniform (0.0–1.0) driven by weather state:
+    - CLEAR=0.1, CLOUDY=0.5, RAIN=0.7, STORM=0.9, FOG=0.3, SNOW=0.6
+  - Cloud color: white/grey, darker for storm, slightly blue-tinted at night
+  - Alpha: clouds are semi-transparent, thicker = more opaque
+  - Noise UV scrolls in wind direction at wind speed
+  - Poles get less cloud coverage (latitude fade)
+
+- [x] **7c.2** Create `planet/cloud_layer.gd` (extends MeshInstance3D)
+  - SphereMesh slightly larger than planet
+  - Applies `clouds.gdshader` as ShaderMaterial
+  - `set_coverage(value: float)` → updates shader uniform
+  - `set_wind(direction: Vector2, speed: float)` → updates scroll uniforms
+  - `set_time_of_day(hour: float)` → adjusts cloud brightness (darker at night)
+  - Rotates slowly with wind for visual movement
+
+- [x] **7c.3** Create `shaders/atmosphere.gdshader` — Atmospheric scattering glow
+  - Rendered on a sphere mesh larger than clouds (radius = planet + 5.0)
+  - Fresnel-based glow: stronger at edges (limb), transparent at center
+  - Color shifts with time of day: blue day, orange sunrise/sunset, dark blue night
+  - `atmosphere_density` uniform for haze during fog/rain
+  - Additive blending (no depth write)
+
+- [x] **7c.4** Create `planet/atmosphere_shell.gd` (extends MeshInstance3D)
+  - Setup + uniform updates from time system
+
+- [x] **7c.5** Create `systems/sys_weather_visuals.gd` — Connects weather data → visuals
+  - Each tick: read `SysWeather.current_state`, `SysWind`, `SysTime.hour`
+  - Update cloud_layer: coverage, wind scroll, brightness
+  - Update atmosphere_shell: density, color
+  - Transition smoothly (lerp coverage over 3-5 seconds on weather change)
+  - Update environment fog: CLEAR=0, RAIN=light fog, FOG=heavy fog, STORM=medium fog
+
+- [x] **7c.6** Create rain particle effect
+  - GPUParticles3D node, child of camera (follows player view)
+  - Particles: small white/blue streaks falling downward relative to planet surface
+  - Emitting only when weather == RAIN or STORM
+  - STORM: more particles, faster, slight wind angle bias
+  - Rain amount scales: 500 particles (RAIN), 2000 particles (STORM)
+
+- [x] **7c.7** Create snow particle effect
+  - GPUParticles3D node, same setup as rain but:
+  - Slower fall speed, slight drift/wobble
+  - White dots instead of streaks
+  - Active when weather == RAIN or STORM AND temperature < 0.25 at camera position
+
+- [x] **7c.8** Create lightning effect (flash via sun energy spike)
+  - During STORM: random lightning flash every 3-10 seconds
+  - Flash: brief spike of DirectionalLight energy (0.15 → 3.0 → 0.15 over 0.2s)
+  - Optional: spawn a short-lived glowing line mesh from cloud to ground at strike tile
+  - Screen tint flash (white overlay 0.1s via CanvasLayer)
+
+- [x] **7c.9** Create fog effect (environment fog density driven by weather)
+  - Use Godot's built-in Environment volumetric fog or depth fog
+  - FOG weather: `fog_density` ramps up, `fog_light_energy` dims
+  - Transition: smooth 5-second ramp
+
+- [ ] **7c.10** Snow accumulation visual (deferred — needs per-tile snow_depth tracking)
+  - When snowing: lerp tile vertex colors toward white over time
+  - When not snowing + warm: lerp back to biome color
+  - Track `snow_depth` per tile (0.0–1.0) — visual only, no gameplay yet
+  - Shader: mix biome color with white based on snow_depth uniform or vertex color alpha
+
+### Verification
+```
+CLEAR: Blue sky, thin wispy clouds, atmosphere glow at edges.
+CLOUDY: Thicker cloud coverage, clouds drift with wind.
+RAIN: Dark clouds, rain streaks falling near camera, ground appears wet.
+STORM: Very dark clouds, heavy rain, lightning flashes illuminate planet,
+       thunder-like screen shake (subtle), lightning bolts visible.
+FOG: Ground fog obscures terrain, reduced visibility, muted atmosphere.
+SNOW: White particles drifting, terrain gradually turns white in cold biomes.
+Day/night: Clouds darken at night, atmosphere shifts orange at dawn/dusk.
+Transitions: All changes smooth, no popping.
+```
+
+---
+
 ## Phase 8: Flora System
 
 **Goal**: Trees and bushes spawn, grow through life stages, spread seeds, catch fire, and die. All autonomous.

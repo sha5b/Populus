@@ -2,11 +2,12 @@ extends MeshInstance3D
 class_name PlanetMesh
 
 var grid: TorusGrid
-var projector: SphereProjector
+var projector: PlanetProjector
 var biome_map: PackedInt32Array
+var is_dirty: bool = false
 
 
-func setup(g: TorusGrid, p: SphereProjector) -> void:
+func setup(g: TorusGrid, p: PlanetProjector) -> void:
 	grid = g
 	projector = p
 	biome_map = PackedInt32Array()

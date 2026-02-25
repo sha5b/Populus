@@ -1,4 +1,4 @@
-class_name SphereProjector
+class_name PlanetProjector
 
 var width: int
 var height: int
