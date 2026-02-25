@@ -60,26 +60,26 @@ func world_to_cube_face(world_pos: Vector3) -> Array:
 	var dir := world_pos.normalized()
 	var abs_dir := Vector3(absf(dir.x), absf(dir.y), absf(dir.z))
 	var face: int
-	var u: float
-	var v: float
+	var raw_u: float
+	var raw_v: float
 	if abs_dir.x >= abs_dir.y and abs_dir.x >= abs_dir.z:
 		if dir.x > 0:
-			face = 0; u = -dir.z / dir.x; v = dir.y / dir.x
+			face = 0; raw_u = -dir.z / dir.x; raw_v = dir.y / dir.x
 		else:
-			face = 1; u = dir.z / dir.x; v = -dir.y / dir.x
+			face = 1; raw_u = dir.z / (-dir.x); raw_v = dir.y / (-dir.x)
 	elif abs_dir.y >= abs_dir.x and abs_dir.y >= abs_dir.z:
 		if dir.y > 0:
-			face = 2; u = dir.x / dir.y; v = -dir.z / dir.y
+			face = 2; raw_u = dir.x / dir.y; raw_v = -dir.z / dir.y
 		else:
-			face = 3; u = dir.x / -dir.y; v = dir.z / -dir.y
+			face = 3; raw_u = dir.x / (-dir.y); raw_v = dir.z / (-dir.y)
 	else:
 		if dir.z > 0:
-			face = 4; u = dir.x / dir.z; v = dir.y / dir.z
+			face = 4; raw_u = dir.x / dir.z; raw_v = dir.y / dir.z
 		else:
-			face = 5; u = -dir.x / -dir.z; v = dir.y / -dir.z
-	u = (u + 1.0) * 0.5
-	v = (v + 1.0) * 0.5
-	return [face, u, v]
+			face = 5; raw_u = -dir.x / (-dir.z); raw_v = dir.y / (-dir.z)
+	var u := (raw_u + 1.0) * 0.5
+	var v := (raw_v + 1.0) * 0.5
+	return [face, clampf(u, 0.0, 1.0), clampf(v, 0.0, 1.0)]
 
 
 func height_color(h: float) -> Color:

@@ -7,6 +7,15 @@ var erosion_map: PackedFloat32Array
 var peaks_valleys_map: PackedFloat32Array
 var weirdness_map: PackedFloat32Array
 
+const NUM_PLATES := 8
+const PLATE_BOUNDARY_WIDTH := 0.12
+const MOUNTAIN_RIDGE_STRENGTH := 0.45
+const RIFT_DEPTH := 0.15
+const POLAR_DAMPING_START := 0.7
+
+var _plate_centers: Array[Vector3] = []
+var _plate_is_continental: Array[bool] = []
+
 
 func _init(world_seed: int = 0) -> void:
 	if world_seed == 0:
@@ -29,46 +38,74 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 	weirdness_map = PackedFloat32Array()
 	weirdness_map.resize(total)
 
-	var continental := _make_noise(_seed, 0.012, 6, FastNoiseLite.FRACTAL_FBM)
-	var erosion_noise := _make_noise(_seed + 1000, 0.02, 5, FastNoiseLite.FRACTAL_FBM)
-	var pv_noise := _make_noise(_seed + 2000, 0.035, 4, FastNoiseLite.FRACTAL_RIDGED)
-	var detail := _make_noise(_seed + 3000, 0.1, 3, FastNoiseLite.FRACTAL_FBM)
-	var weird_noise := _make_noise(_seed + 4000, 0.025, 3, FastNoiseLite.FRACTAL_FBM)
+	_generate_plates()
+
+	var continental := _make_noise(_seed, 0.015, 5, FastNoiseLite.FRACTAL_FBM)
+	var erosion_noise := _make_noise(_seed + 1000, 0.025, 4, FastNoiseLite.FRACTAL_FBM)
+	var ridge_noise := _make_noise(_seed + 2000, 0.04, 4, FastNoiseLite.FRACTAL_RIDGED)
+	var detail := _make_noise(_seed + 3000, 0.08, 3, FastNoiseLite.FRACTAL_FBM)
+	var weird_noise := _make_noise(_seed + 4000, 0.02, 3, FastNoiseLite.FRACTAL_FBM)
+	var warp_noise := _make_noise(_seed + 5000, 0.03, 2, FastNoiseLite.FRACTAL_FBM)
 
 	var min_h := 999.0
 	var max_h := -999.0
 
 	for y in range(h):
 		for x in range(w):
-			var idx := y * w + x
+			var map_idx := y * w + x
 
-			var sx: float
-			var sy: float
-			var sz: float
+			var dir: Vector3
 			if proj:
-				var wp := proj.grid_to_sphere(float(x), float(y)).normalized()
-				sx = wp.x * 50.0
-				sy = wp.y * 50.0
-				sz = wp.z * 50.0
+				dir = proj.grid_to_sphere(float(x), float(y)).normalized()
 			else:
-				sx = float(x)
-				sy = float(y)
-				sz = 0.0
+				var lon := float(x) / float(w) * TAU
+				var lat := float(y) / float(h) * PI - PI * 0.5
+				dir = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 
-			var c := (continental.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
-			var e := (erosion_noise.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
-			var pv := (pv_noise.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
-			var d := detail.get_noise_3d(sx, sy, sz)
-			var weird := (weird_noise.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
+			var sp := dir * 50.0
 
-			continentalness_map[idx] = c
-			erosion_map[idx] = e
-			peaks_valleys_map[idx] = pv
-			weirdness_map[idx] = weird
+			var warp_x := warp_noise.get_noise_3d(sp.x, sp.y, sp.z) * 3.0
+			var warp_z := warp_noise.get_noise_3d(sp.x + 100.0, sp.y + 100.0, sp.z + 100.0) * 3.0
+			var warped := Vector3(sp.x + warp_x, sp.y, sp.z + warp_z)
+
+			var c := (continental.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+			var e := (erosion_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+			var ridge := (ridge_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+			var d := detail.get_noise_3d(sp.x * 1.5, sp.y * 1.5, sp.z * 1.5)
+			var weird := (weird_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+
+			var plate_info := _get_plate_info(dir)
+			var boundary_factor: float = plate_info[0]
+			var is_convergent: bool = plate_info[1]
+			var plate_continental: bool = plate_info[2]
+
+			continentalness_map[map_idx] = c
+			erosion_map[map_idx] = e
+			peaks_valleys_map[map_idx] = ridge
+			weirdness_map[map_idx] = weird
 
 			var base_h := _continental_spline(c)
+
+			if plate_continental:
+				base_h += 0.08
+
+			var tectonic_h := 0.0
+			if boundary_factor > 0.0:
+				if is_convergent:
+					tectonic_h = boundary_factor * MOUNTAIN_RIDGE_STRENGTH * ridge
+				else:
+					tectonic_h = -boundary_factor * RIFT_DEPTH
+
 			var variance := _erosion_spline(1.0 - e)
-			var raw := base_h + pv * variance * 0.6 + d * 0.08
+			var mountain_h := ridge * variance * 0.3 * (1.0 - boundary_factor * 0.5)
+
+			var abs_lat := absf(dir.y)
+			var polar_damp := 1.0
+			if abs_lat > POLAR_DAMPING_START:
+				polar_damp = 1.0 - (abs_lat - POLAR_DAMPING_START) / (1.0 - POLAR_DAMPING_START)
+				polar_damp = clampf(polar_damp, 0.1, 1.0)
+
+			var raw := base_h + (tectonic_h + mountain_h) * polar_damp + d * 0.06
 
 			grid.set_height(x, y, raw)
 			min_h = minf(min_h, raw)
@@ -83,9 +120,57 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 				land_count += 1
 
 	var land_pct := float(land_count) / float(total) * 100.0
-	print("Generated heightmap (5 noise maps, seed=%d). Land: %.0f%%, Water: %.0f%%" % [
-		_seed, land_pct, 100.0 - land_pct
+	print("Generated heightmap (tectonic + 6 noise, seed=%d, %d plates). Land: %.0f%%, Water: %.0f%%" % [
+		_seed, NUM_PLATES, land_pct, 100.0 - land_pct
 	])
+
+
+func _generate_plates() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _seed + 7777
+
+	_plate_centers.clear()
+	_plate_is_continental.clear()
+
+	for i in range(NUM_PLATES):
+		var theta := rng.randf() * TAU
+		var phi := acos(rng.randf_range(-0.85, 0.85))
+		var center := Vector3(
+			sin(phi) * cos(theta),
+			cos(phi),
+			sin(phi) * sin(theta)
+		).normalized()
+		_plate_centers.append(center)
+		_plate_is_continental.append(rng.randf() < 0.55)
+
+
+func _get_plate_info(dir: Vector3) -> Array:
+	var closest_dist := 999.0
+	var closest_idx := 0
+	var second_dist := 999.0
+	var second_idx := 0
+
+	for i in range(_plate_centers.size()):
+		var dist := dir.distance_to(_plate_centers[i])
+		if dist < closest_dist:
+			second_dist = closest_dist
+			second_idx = closest_idx
+			closest_dist = dist
+			closest_idx = i
+		elif dist < second_dist:
+			second_dist = dist
+			second_idx = i
+
+	var boundary_dist := second_dist - closest_dist
+	var max_boundary := PLATE_BOUNDARY_WIDTH * 2.0
+	var boundary_factor := clampf(1.0 - boundary_dist / max_boundary, 0.0, 1.0)
+	boundary_factor = boundary_factor * boundary_factor
+
+	var both_continental := _plate_is_continental[closest_idx] and _plate_is_continental[second_idx]
+	var both_oceanic := not _plate_is_continental[closest_idx] and not _plate_is_continental[second_idx]
+	var is_convergent := both_continental or (not both_oceanic and boundary_factor > 0.3)
+
+	return [boundary_factor, is_convergent, _plate_is_continental[closest_idx]]
 
 
 func _make_noise(seed_val: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:

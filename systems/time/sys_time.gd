@@ -44,29 +44,14 @@ func _update_day_night() -> void:
 		return
 
 	var hour_frac := float(hour) + fmod(game_time / 60.0, 1.0)
-	var sun_angle := (hour_frac / 24.0) * 360.0 - 90.0
-	sun_light.rotation_degrees.x = sun_angle
+	var sun_angle := (hour_frac / 24.0) * TAU
 
-	var intensity: float
-	var color: Color
+	var sun_pos := Vector3(cos(sun_angle), 0.3, sin(sun_angle)).normalized() * 200.0
+	sun_light.global_position = sun_pos
+	sun_light.look_at(Vector3.ZERO, Vector3.UP)
 
-	if hour_frac >= 7.0 and hour_frac < 18.0:
-		intensity = 1.2
-		color = Color(1.0, 0.98, 0.95)
-	elif hour_frac >= 5.0 and hour_frac < 7.0:
-		var t := (hour_frac - 5.0) / 2.0
-		intensity = lerpf(0.15, 1.2, t)
-		color = Color(1.0, 0.6, 0.3).lerp(Color(1.0, 0.98, 0.95), t)
-	elif hour_frac >= 18.0 and hour_frac < 20.0:
-		var t := (hour_frac - 18.0) / 2.0
-		intensity = lerpf(1.2, 0.15, t)
-		color = Color(1.0, 0.98, 0.95).lerp(Color(0.3, 0.3, 0.6), t)
-	else:
-		intensity = 0.15
-		color = Color(0.2, 0.2, 0.4)
-
-	sun_light.light_energy = intensity
-	sun_light.light_color = color
+	sun_light.light_energy = 1.2
+	sun_light.light_color = Color(1.0, 0.98, 0.95)
 
 
 func _season_name(s: int) -> String:

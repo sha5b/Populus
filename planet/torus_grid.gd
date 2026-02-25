@@ -3,6 +3,7 @@ class_name TorusGrid
 var width: int
 var height: int
 var heights: PackedFloat32Array
+var biomes: PackedInt32Array
 
 
 func _init(w: int = 128, h: int = 128) -> void:
@@ -11,6 +12,9 @@ func _init(w: int = 128, h: int = 128) -> void:
 	heights = PackedFloat32Array()
 	heights.resize(width * height)
 	heights.fill(0.0)
+	biomes = PackedInt32Array()
+	biomes.resize(width * height)
+	biomes.fill(0)
 
 
 func wrap_x(x: int) -> int:
@@ -31,6 +35,14 @@ func get_height(x: int, y: int) -> float:
 
 func set_height(x: int, y: int, h: float) -> void:
 	heights[_index(x, y)] = h
+
+
+func get_biome(x: int, y: int) -> int:
+	return biomes[_index(x, y)]
+
+
+func set_biome(x: int, y: int, b: int) -> void:
+	biomes[_index(x, y)] = b
 
 
 func get_tile_center_height(tx: int, ty: int) -> float:

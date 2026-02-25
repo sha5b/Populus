@@ -19,6 +19,7 @@ var cloud_layer_node: PlanetCloudLayer
 var atmosphere_node: PlanetAtmosphere
 var rain_system: PlanetRain
 var atmo_grid: AtmosphereGrid
+var flora_renderer: PlanetFloraRenderer
 var _debug_label: Label
 
 
@@ -215,8 +216,20 @@ func _generate_terrain() -> void:
 		heightmap_gen.weirdness_map
 	)
 
+	for y in range(h):
+		for x in range(w):
+			grid.set_biome(x, y, biome_map_data[y * w + x])
+
 	planet_mesh.set_biome_map(biome_map_data)
 	planet_mesh.build_mesh()
+
+	var flora_count := GenFlora.generate(world, grid, biome_map_data, projector)
+	print("Flora generated: %d plants." % flora_count)
+
+	flora_renderer = PlanetFloraRenderer.new()
+	flora_renderer.name = "FloraRenderer"
+	flora_renderer.setup(projector, grid, world)
+	add_child(flora_renderer)
 
 
 func _register_systems() -> void:
@@ -279,7 +292,19 @@ func _register_systems() -> void:
 	weather_visuals.sun_light = get_node("SunLight") as DirectionalLight3D
 	world.add_system(weather_visuals)
 
-	print("All systems registered.")
+	var flora_growth := SysFloraGrowth.new()
+	flora_growth.setup(grid, moisture_map, temperature_map, time_system)
+	world.add_system(flora_growth)
+
+	var seed_dispersal := SysSeedDispersal.new()
+	seed_dispersal.setup(grid, projector, wind_system, moisture_map)
+	world.add_system(seed_dispersal)
+
+	var fire_spread := SysFireSpread.new()
+	fire_spread.setup(grid, weather_system, wind_system)
+	world.add_system(fire_spread)
+
+	print("All systems registered (including flora).")
 
 
 func _add_debug_hud() -> void:
