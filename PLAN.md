@@ -327,9 +327,9 @@ func _process(delta: float) -> void:
 
 ### Tasks
 
-- [ ] **0.1** Create every folder in the structure above (empty `.gdkeep` files where needed)
-- [ ] **0.2** Create the 4 ECS core files: `ecs/entity.gd`, `ecs/component.gd`, `ecs/system.gd`, `ecs/world.gd`
-- [ ] **0.3** Create `config/game_config.gd` as Autoload singleton
+- [x] **0.1** Create every folder in the structure above (empty `.gdkeep` files where needed)
+- [x] **0.2** Create the 4 ECS core files: `ecs/entity.gd`, `ecs/component.gd`, `ecs/system.gd`, `ecs/world.gd`
+- [x] **0.3** Create `config/game_config.gd` as Autoload singleton
   ```
   GRID_WIDTH = 128
   GRID_HEIGHT = 128
@@ -338,10 +338,10 @@ func _process(delta: float) -> void:
   MAX_POPULATION = 200
   WORLD_SEED = 0           # 0 = random
   ```
-- [ ] **0.4** Create `data/def_enums.gd` with all enums (BiomeType, RoleType, BuildingType, SpellType, AIState, TaskType, GrowthStage, DietType, Season, WeatherState, etc.)
-- [ ] **0.5** Create `scenes/main.tscn` + `main.gd` that instantiates World, registers a dummy test system
-- [ ] **0.6** Create a `sys_test.gd` system that prints "Tick" once per second to verify ECS loop works
-- [ ] **0.7** Verify: entity creation, component attachment, `world.query()` returns correct IDs
+- [x] **0.4** Create `data/def_enums.gd` with all enums (BiomeType, RoleType, BuildingType, SpellType, AIState, TaskType, GrowthStage, DietType, Season, WeatherState, etc.)
+- [x] **0.5** Create `scenes/main.tscn` + `main.gd` that instantiates World, registers a dummy test system
+- [x] **0.6** Create a `sys_test.gd` system that prints "Tick" once per second to verify ECS loop works
+- [x] **0.7** Verify: entity creation, component attachment, `world.query()` returns correct IDs
 
 ### Verification
 ```
@@ -360,7 +360,7 @@ Console output on run:
 
 ### Tasks
 
-- [ ] **1.1** Create `planet/torus_grid.gd`
+- [x] **1.1** Create `planet/torus_grid.gd`
   - `PackedFloat32Array` of size `(width+1) * (height+1)` for vertex heights (vertices, not tiles — there are width+1 vertices per row, but they wrap, so index with modulo)
   - `get_height(x, y) -> float` with wrapping
   - `set_height(x, y, h)` with wrapping
@@ -374,7 +374,7 @@ Console output on run:
   - `fill_circle(cx, cy, radius, height_delta)` — raise/lower circular area
   - `flatten_area(cx, cy, radius)` — set all vertices in circle to average
 
-- [ ] **1.2** Write tests in `debug/test_torus_grid.gd`
+- [x] **1.2** Write tests in `debug/test_torus_grid.gd`
   - Wrap: `get_height(-1, 0)` == `get_height(width-1, 0)`
   - Wrap: `get_height(width, 0)` == `get_height(0, 0)`
   - `torus_distance(Vector2i(0,0), Vector2i(127,0))` == 1.0 (for 128-width grid)
@@ -395,7 +395,7 @@ All tests pass in console output.
 
 ### Tasks
 
-- [ ] **2.1** Create `planet/sphere_projector.gd`
+- [x] **2.1** Create `planet/sphere_projector.gd`
   - `grid_to_sphere(gx: float, gy: float, height: float, radius: float) -> Vector3`
     ```
     lon = (gx / width) * TAU
@@ -406,7 +406,7 @@ All tests pass in console output.
   - `sphere_to_grid(world_pos: Vector3) -> Vector2i` (inverse for raycasting)
   - `get_sphere_normal(gx, gy) -> Vector3` (normalize sphere position)
 
-- [ ] **2.2** Create `planet/planet_mesh.gd` (extends `MeshInstance3D`)
+- [x] **2.2** Create `planet/planet_mesh.gd` (extends `MeshInstance3D`)
   - `build_mesh(grid: TorusGrid, projector: SphereProjector)` — creates `ArrayMesh`
   - Each tile → 2 triangles (4 vertices, 6 indices)
   - Vertex positions from `grid_to_sphere()`
@@ -414,16 +414,16 @@ All tests pass in console output.
   - UV from grid coords (u = gx/width, v = gy/height)
   - `update_region(cx, cy, radius)` — rebuild only affected triangles
 
-- [ ] **2.3** Create `shaders/terrain.gdshader`
+- [x] **2.3** Create `shaders/terrain.gdshader`
   - Fragment: use vertex color for now (height-based)
   - Later phases will add biome blending
 
-- [ ] **2.4** Create `shaders/water.gdshader`
+- [x] **2.4** Create `shaders/water.gdshader`
   - Transparent blue sphere at sea_level radius
   - Simple sine-wave vertex displacement for waves
 
-- [ ] **2.5** Create `sys_terrain_render.gd` — a system that calls `planet_mesh.build_mesh()` once, and `update_region()` when terrain changes
-- [ ] **2.6** Create `sys_water_render.gd` — creates water sphere mesh
+- [x] **2.5** Create `sys_terrain_render.gd` (handled in main.gd for now) — a system that calls `planet_mesh.build_mesh()` once, and `update_region()` when terrain changes
+- [x] **2.6** Create `sys_water_render.gd` (handled in main.gd for now) — creates water sphere mesh
 
 ### Verification
 ```
@@ -440,7 +440,7 @@ No seams at the grid wrap boundary.
 
 ### Tasks
 
-- [ ] **3.1** Create `gen_heightmap.gd`
+- [x] **3.1** Create `gen_heightmap.gd`
   - Uses `FastNoiseLite` (Godot built-in)
   - **Continental layer**: OpenSimplex2, FBM, freq=0.015, octaves=6, lacunarity=2.0, gain=0.5
   - **Detail layer**: OpenSimplex2, FBM, freq=0.08, octaves=4, weight=0.3
@@ -448,12 +448,12 @@ No seams at the grid wrap boundary.
   - **Normalize**: shift/scale so ~45% of tiles are below sea level (adjustable)
   - **Seed**: from `GameConfig.WORLD_SEED` (0 = random)
 
-- [ ] **3.2** Create `gen_biome.gd` (data prep, not rendering yet)
+- [x] **3.2** Create `gen_biome.gd` (data prep, not rendering yet)
   - **Temperature map**: base from latitude (`gy/height` → equator hot, poles cold) + altitude cooling (`-height * 0.3`) + noise variation (freq=0.03, weight=0.15)
   - **Moisture map**: BFS flood fill from water tiles (distance-based falloff) + noise variation + simple prevailing wind bias (east→west moisture transport)
   - Store per-tile: `temperature: float`, `moisture: float`
 
-- [ ] **3.3** Register as one-shot: in `main.gd`, call generation before starting the ECS loop
+- [x] **3.3** Register as one-shot: in `main.gd`, call generation before starting the ECS loop
 
 ### Verification
 ```
@@ -470,19 +470,19 @@ Sphere shows varied terrain with oceans, hills, mountains.
 
 ### Tasks
 
-- [ ] **4.1** Create `data/def_biomes.gd`
+- [x] **4.1** Create `data/def_biomes.gd`
   - BiomeType enum: OCEAN, BEACH, TROPICAL_FOREST, DESERT, SAVANNA, TEMPERATE_FOREST, GRASSLAND, STEPPE, TUNDRA, TAIGA, BOREAL_FOREST, MOUNTAIN, SNOW_ICE, SWAMP
   - Per biome: `color`, `tree_density`, `fauna_density`, `movement_cost`, `fertility`, `flammability`
 
-- [ ] **4.2** Create `sys_biome_assignment.gd`
+- [x] **4.2** Create `generation/gen_biome_assignment.gd` (static Whittaker classifier)
   - One-shot system: for each tile, look up `(temperature, moisture, altitude) → BiomeType` using Whittaker thresholds
   - Override rules: altitude > mountain_threshold → MOUNTAIN, very_high + cold → SNOW_ICE, very_low + wet → SWAMP, underwater → OCEAN, adjacent to ocean + low → BEACH
 
-- [ ] **4.3** Create `sys_biome_render.gd`
+- [x] **4.3** Biome rendering via `planet_mesh._get_tile_color()` using biome_map
   - Update vertex colors on planet mesh based on biome color
   - Smooth blending at biome borders (average neighbor colors)
 
-- [ ] **4.4** Or: update `shaders/terrain.gdshader` to accept a biome color texture and sample it
+- [x] **4.4** Terrain shader uses vertex colors (biome-driven)
 
 ### Verification
 ```
@@ -499,15 +499,15 @@ Biome distribution looks geographically plausible.
 
 ### Tasks
 
-- [ ] **5.1** Create `planet/planet_camera.gd` (extends Camera3D)
+- [x] **5.1** Create `planet/planet_camera.gd` (extends Camera3D)
   - **Orbit**: camera always looks at a point on the sphere surface
   - **Zoom**: scroll wheel changes distance. Min = close (5 units above surface), Max = far (see whole globe)
   - **Pan**: WASD moves the look-at point across the sphere surface (in grid coordinates, wrapped)
   - **Rotate**: Q/E or middle-mouse rotates around the look-at vector
   - **Smooth**: all transitions lerp'd
 
-- [ ] **5.2** Create `sys_camera_input.gd` — reads input, updates camera
-- [ ] **5.3** Grid-to-screen picking: click on sphere → determine which tile → print tile info to console (height, biome, temperature, moisture)
+- [x] **5.2** Camera input handled in `planet_camera.gd` directly — reads input, updates camera
+- [ ] **5.3** Grid-to-screen picking (deferred): click on sphere → determine which tile → print tile info to console (height, biome, temperature, moisture)
 
 ### Verification
 ```
@@ -525,24 +525,24 @@ Click a tile → console prints: "Tile (45, 67): height=0.34, biome=GRASSLAND, t
 
 ### Tasks
 
-- [ ] **6.1** Create `sys_time.gd`
+- [x] **6.1** Create `sys_time.gd`
   - `game_time += delta * GameConfig.TIME_SCALE`
   - Track: `hour` (0-23), `day` (0+), `season` (SPRING/SUMMER/AUTUMN/WINTER), `year`
   - Emit signals or set globals: `EventBus.hour_changed`, `EventBus.day_changed`, `EventBus.season_changed`
   - Config: 24 hours = 1 day, 7 days = 1 season, 28 days = 1 year
 
-- [ ] **6.2** Create `sys_day_night.gd`
+- [x] **6.2** Day/night handled in `sys_time.gd` (sun rotation + color by hour)
   - Adjust DirectionalLight3D color and intensity by hour
   - Dawn (5-7): warm orange, rising
   - Day (7-18): bright white
   - Dusk (18-20): warm orange, falling
   - Night (20-5): dark blue, dim
 
-- [ ] **6.3** Create `sys_season.gd`
+- [x] **6.3** Create `sys_season.gd`
   - Modify global temperature offset by season: Spring=+0, Summer=+0.15, Autumn=-0.05, Winter=-0.2
   - Modify global moisture offset: Spring=+0.1, Summer=0, Autumn=0, Winter=-0.1
 
-- [ ] **6.4** Create debug HUD element showing: `Day 3, Hour 14, Summer, Year 1`
+- [x] **6.4** Debug HUD in main.gd showing: `Day 3, 14:00, Summer, Year 1 | FPS | Entities`
 
 ### Verification
 ```
@@ -560,24 +560,24 @@ Console: "Season changed: SPRING → SUMMER"
 
 ### Tasks
 
-- [ ] **7.1** Create `sys_weather.gd`
+- [x] **7.1** Create `sys_weather.gd`
   - Global weather state machine: CLEAR → CLOUDY → RAIN → STORM → CLEARING → CLEAR
   - Transition check every 30-60 game seconds (randomized)
   - Transition probabilities vary by season (more rain in spring, more clear in summer)
 
-- [ ] **7.2** Create `sys_wind.gd`
+- [x] **7.2** Create `sys_wind.gd`
   - Global wind direction (Vector2) and speed (float)
   - Slowly drifts over time with noise
   - Storms spike wind speed
 
-- [ ] **7.3** Create `sys_precipitation.gd`
+- [x] **7.3** Create `sys_precipitation.gd`
   - RAIN state: increase tile moisture by `rain_rate * delta`
   - SNOW (rain + cold biome): same but flag tiles as snowy
   - STORM: same as rain but stronger + random lightning strikes on land tiles
 
-- [ ] **7.4** Lightning strike effect: pick random land tile, deal damage to any entity there, chance to start fire
+- [x] **7.4** Lightning strike effect: pick random land tile, deal damage to any entity there, chance to start fire
 
-- [ ] **7.5** Debug HUD element: `Weather: RAIN | Wind: NE 3.2 m/s`
+- [x] **7.5** Debug HUD shows: `Clear | Wind: NE 1.2 m/s`
 
 ### Verification
 ```
