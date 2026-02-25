@@ -25,19 +25,56 @@ static func generate_chunk_mesh(
 ) -> ArrayMesh:
 	_ensure_tables()
 
+	var cs := AtmosphereGrid.CHUNK_SIZE
+	var fu_start := chunk_u * cs
+	var fv_start := chunk_v * cs
+	var alt_end := AtmosphereGrid.ALT_RES
+
+	var grid_u := (cs / lod_step) + 1
+	var grid_v := (cs / lod_step) + 1
+	var grid_a := (alt_end / lod_step) + 1
+	var cache_size := grid_u * grid_v * grid_a
+	var density_cache := PackedFloat32Array()
+	density_cache.resize(cache_size)
+
+	var has_any := false
+	var ci := 0
+	for ia in range(grid_a):
+		var alt := ia * lod_step
+		for iv in range(grid_v):
+			var fv := fv_start + iv * lod_step
+			for iu in range(grid_u):
+				var fu := fu_start + iu * lod_step
+				var d := atmo.get_cloud_density_at(face, fu, fv, alt)
+				density_cache[ci] = d
+				if d >= DENSITY_THRESHOLD:
+					has_any = true
+				ci += 1
+
+	if not has_any:
+		return null
+
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 
-	var cs := AtmosphereGrid.CHUNK_SIZE
-	var fu_start := chunk_u * cs
-	var fv_start := chunk_v * cs
-	var alt_end := AtmosphereGrid.ALT_RES - 1
-
-	for alt in range(0, alt_end, lod_step):
-		for fv in range(fv_start, fv_start + cs, lod_step):
-			for fu in range(fu_start, fu_start + cs, lod_step):
-				_march_cube(atmo, face, fu, fv, alt, lod_step, cloud_altitude, verts, normals, colors)
+	for ia in range(grid_a - 1):
+		var alt := ia * lod_step
+		for iv in range(grid_v - 1):
+			var fv := fv_start + iv * lod_step
+			for iu in range(grid_u - 1):
+				var fu := fu_start + iu * lod_step
+				var base := ia * grid_v * grid_u + iv * grid_u + iu
+				var base_above := (ia + 1) * grid_v * grid_u + iv * grid_u + iu
+				var c0 := density_cache[base]
+				var c1 := density_cache[base + 1]
+				var c2 := density_cache[base + grid_u + 1]
+				var c3 := density_cache[base + grid_u]
+				var c4 := density_cache[base_above]
+				var c5 := density_cache[base_above + 1]
+				var c6 := density_cache[base_above + grid_u + 1]
+				var c7 := density_cache[base_above + grid_u]
+				_march_cube_cached(atmo, face, fu, fv, alt, lod_step, cloud_altitude, c0, c1, c2, c3, c4, c5, c6, c7, verts, normals, colors)
 
 	if verts.size() == 0:
 		return null
@@ -52,26 +89,19 @@ static func generate_chunk_mesh(
 	return mesh
 
 
-static func _march_cube(
+static func _march_cube_cached(
 	atmo: AtmosphereGrid,
 	face: int,
 	fu: int, fv: int, alt: int,
 	step: int,
 	cloud_alt: float,
+	c0: float, c1: float, c2: float, c3: float,
+	c4: float, c5: float, c6: float, c7: float,
 	verts: PackedVector3Array,
 	norms: PackedVector3Array,
 	cols: PackedColorArray
 ) -> void:
-	var corners: Array[float] = []
-	corners.resize(8)
-	corners[0] = atmo.get_cloud_density_at(face, fu, fv, alt)
-	corners[1] = atmo.get_cloud_density_at(face, fu + step, fv, alt)
-	corners[2] = atmo.get_cloud_density_at(face, fu + step, fv + step, alt)
-	corners[3] = atmo.get_cloud_density_at(face, fu, fv + step, alt)
-	corners[4] = atmo.get_cloud_density_at(face, fu, fv, alt + step)
-	corners[5] = atmo.get_cloud_density_at(face, fu + step, fv, alt + step)
-	corners[6] = atmo.get_cloud_density_at(face, fu + step, fv + step, alt + step)
-	corners[7] = atmo.get_cloud_density_at(face, fu, fv + step, alt + step)
+	var corners: Array[float] = [c0, c1, c2, c3, c4, c5, c6, c7]
 
 	var cube_idx := 0
 	for i in range(8):

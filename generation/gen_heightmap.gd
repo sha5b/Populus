@@ -7,11 +7,13 @@ var erosion_map: PackedFloat32Array
 var peaks_valleys_map: PackedFloat32Array
 var weirdness_map: PackedFloat32Array
 
-const NUM_PLATES := 8
-const PLATE_BOUNDARY_WIDTH := 0.12
-const MOUNTAIN_RIDGE_STRENGTH := 0.45
-const RIFT_DEPTH := 0.15
+const NUM_PLATES := 12
+const PLATE_BOUNDARY_WIDTH := 0.14
+const MOUNTAIN_RIDGE_STRENGTH := 0.55
+const RIFT_DEPTH := 0.2
 const POLAR_DAMPING_START := 0.7
+const VOLCANIC_STRENGTH := 0.3
+const SHELF_DROP := 0.12
 
 var _plate_centers: Array[Vector3] = []
 var _plate_is_continental: Array[bool] = []
@@ -40,12 +42,22 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 
 	_generate_plates()
 
-	var continental := _make_noise(_seed, 0.015, 5, FastNoiseLite.FRACTAL_FBM)
-	var erosion_noise := _make_noise(_seed + 1000, 0.025, 4, FastNoiseLite.FRACTAL_FBM)
-	var ridge_noise := _make_noise(_seed + 2000, 0.04, 4, FastNoiseLite.FRACTAL_RIDGED)
-	var detail := _make_noise(_seed + 3000, 0.08, 3, FastNoiseLite.FRACTAL_FBM)
-	var weird_noise := _make_noise(_seed + 4000, 0.02, 3, FastNoiseLite.FRACTAL_FBM)
-	var warp_noise := _make_noise(_seed + 5000, 0.03, 2, FastNoiseLite.FRACTAL_FBM)
+	var continental := _make_noise(_seed, 0.012, 6, FastNoiseLite.FRACTAL_FBM)
+	var erosion_noise := _make_noise(_seed + 1000, 0.02, 5, FastNoiseLite.FRACTAL_FBM)
+	var ridge_noise := _make_noise(_seed + 2000, 0.035, 5, FastNoiseLite.FRACTAL_RIDGED)
+	var ridge_detail := _make_noise(_seed + 2500, 0.07, 4, FastNoiseLite.FRACTAL_RIDGED)
+	var detail := _make_noise(_seed + 3000, 0.08, 4, FastNoiseLite.FRACTAL_FBM)
+	var micro_detail := _make_noise(_seed + 3500, 0.16, 3, FastNoiseLite.FRACTAL_FBM)
+	var weird_noise := _make_noise(_seed + 4000, 0.018, 4, FastNoiseLite.FRACTAL_FBM)
+	var warp_noise := _make_noise(_seed + 5000, 0.025, 3, FastNoiseLite.FRACTAL_FBM)
+	var warp_noise2 := _make_noise(_seed + 5500, 0.04, 2, FastNoiseLite.FRACTAL_FBM)
+	var volcano_noise := _make_noise(_seed + 6000, 0.06, 3, FastNoiseLite.FRACTAL_FBM)
+
+	# Ocean floor detail noises
+	var ocean_ridge := _make_noise(_seed + 7000, 0.045, 4, FastNoiseLite.FRACTAL_RIDGED)
+	var ocean_trench := _make_noise(_seed + 7500, 0.03, 3, FastNoiseLite.FRACTAL_FBM)
+	var ocean_seamount := _make_noise(_seed + 8000, 0.08, 3, FastNoiseLite.FRACTAL_FBM)
+	var ocean_stones := _make_noise(_seed + 8500, 0.2, 2, FastNoiseLite.FRACTAL_FBM)
 
 	var min_h := 999.0
 	var max_h := -999.0
@@ -64,15 +76,19 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 
 			var sp := dir * 50.0
 
-			var warp_x := warp_noise.get_noise_3d(sp.x, sp.y, sp.z) * 3.0
-			var warp_z := warp_noise.get_noise_3d(sp.x + 100.0, sp.y + 100.0, sp.z + 100.0) * 3.0
-			var warped := Vector3(sp.x + warp_x, sp.y, sp.z + warp_z)
+			var warp_x := warp_noise.get_noise_3d(sp.x, sp.y, sp.z) * 4.5
+			var warp_y := warp_noise2.get_noise_3d(sp.x + 200.0, sp.y + 200.0, sp.z) * 3.0
+			var warp_z := warp_noise.get_noise_3d(sp.x + 100.0, sp.y + 100.0, sp.z + 100.0) * 4.5
+			var warped := Vector3(sp.x + warp_x, sp.y + warp_y, sp.z + warp_z)
 
 			var c := (continental.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
 			var e := (erosion_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
 			var ridge := (ridge_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+			var ridge2 := (ridge_detail.get_noise_3d(warped.x * 1.3, warped.y * 1.3, warped.z * 1.3) + 1.0) * 0.5
 			var d := detail.get_noise_3d(sp.x * 1.5, sp.y * 1.5, sp.z * 1.5)
+			var md := micro_detail.get_noise_3d(sp.x * 2.0, sp.y * 2.0, sp.z * 2.0)
 			var weird := (weird_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+			var volc := (volcano_noise.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
 
 			var plate_info := _get_plate_info(dir)
 			var boundary_factor: float = plate_info[0]
@@ -93,11 +109,17 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 			if boundary_factor > 0.0:
 				if is_convergent:
 					tectonic_h = boundary_factor * MOUNTAIN_RIDGE_STRENGTH * ridge
+					if volc > 0.7 and boundary_factor > 0.5:
+						tectonic_h += (volc - 0.7) * VOLCANIC_STRENGTH * 3.0
 				else:
 					tectonic_h = -boundary_factor * RIFT_DEPTH
 
 			var variance := _erosion_spline(1.0 - e)
-			var mountain_h := ridge * variance * 0.3 * (1.0 - boundary_factor * 0.5)
+			var mountain_h := (ridge * 0.6 + ridge2 * 0.4) * variance * 0.35 * (1.0 - boundary_factor * 0.5)
+
+			var shelf_h := 0.0
+			if base_h > -0.05 and base_h < 0.08:
+				shelf_h = -SHELF_DROP * clampf(1.0 - absf(base_h) / 0.08, 0.0, 1.0) * e
 
 			var abs_lat := absf(dir.y)
 			var polar_damp := 1.0
@@ -105,7 +127,33 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 				polar_damp = 1.0 - (abs_lat - POLAR_DAMPING_START) / (1.0 - POLAR_DAMPING_START)
 				polar_damp = clampf(polar_damp, 0.1, 1.0)
 
-			var raw := base_h + (tectonic_h + mountain_h) * polar_damp + d * 0.06
+			var raw := base_h + (tectonic_h + mountain_h + shelf_h) * polar_damp + d * 0.06 + md * 0.02
+
+			# Ocean floor detail: ridges, trenches, seamounts, stones
+			if raw < 0.0:
+				var ocean_depth := absf(raw)
+				var or_val := (ocean_ridge.get_noise_3d(warped.x, warped.y, warped.z) + 1.0) * 0.5
+				var ot_val := ocean_trench.get_noise_3d(warped.x, warped.y, warped.z)
+				var os_val := (ocean_seamount.get_noise_3d(sp.x, sp.y, sp.z) + 1.0) * 0.5
+				var stone_val := ocean_stones.get_noise_3d(sp.x * 2.0, sp.y * 2.0, sp.z * 2.0)
+
+				# Mid-ocean ridges — raised spines on deep ocean floor
+				var ridge_h := or_val * or_val * 0.15 * clampf(ocean_depth / 0.3, 0.0, 1.0)
+
+				# Deep trenches — narrow deep cuts
+				var trench_h := 0.0
+				if ot_val > 0.6:
+					trench_h = -(ot_val - 0.6) * 0.4 * boundary_factor
+
+				# Seamounts — isolated underwater peaks
+				var seamount_h := 0.0
+				if os_val > 0.75:
+					seamount_h = (os_val - 0.75) * 0.8 * clampf(ocean_depth / 0.2, 0.0, 1.0)
+
+				# Small stone/rock variation across ocean floor
+				var stone_h := stone_val * 0.03
+
+				raw += ridge_h + trench_h + seamount_h + stone_h
 
 			grid.set_height(x, y, raw)
 			min_h = minf(min_h, raw)

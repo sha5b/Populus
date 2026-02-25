@@ -62,7 +62,7 @@ func _init() -> void:
 	_cloud_noise_lo = FastNoiseLite.new()
 	_cloud_noise_lo.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_cloud_noise_lo.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_cloud_noise_lo.fractal_octaves = 4
+	_cloud_noise_lo.fractal_octaves = 2
 	_cloud_noise_lo.fractal_lacunarity = 2.0
 	_cloud_noise_lo.fractal_gain = 0.5
 	_cloud_noise_lo.frequency = 0.04
@@ -71,7 +71,7 @@ func _init() -> void:
 	_cloud_noise_hi = FastNoiseLite.new()
 	_cloud_noise_hi.noise_type = FastNoiseLite.TYPE_CELLULAR
 	_cloud_noise_hi.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_cloud_noise_hi.fractal_octaves = 3
+	_cloud_noise_hi.fractal_octaves = 2
 	_cloud_noise_hi.fractal_lacunarity = 2.5
 	_cloud_noise_hi.fractal_gain = 0.6
 	_cloud_noise_hi.frequency = 0.12
@@ -80,7 +80,7 @@ func _init() -> void:
 	_coverage_noise = FastNoiseLite.new()
 	_coverage_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_coverage_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_coverage_noise.fractal_octaves = 3
+	_coverage_noise.fractal_octaves = 2
 	_coverage_noise.frequency = 0.015
 	_coverage_noise.seed = 999
 

@@ -14,10 +14,19 @@ func generate(grid: TorusGrid, temperature_map: PackedFloat32Array, moisture_map
 
 
 func _generate_temperature(grid: TorusGrid, temp_map: PackedFloat32Array, proj: PlanetProjector = null) -> void:
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.03
-	noise.seed = _seed + 2000
+	var noise_lo := FastNoiseLite.new()
+	noise_lo.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise_lo.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise_lo.fractal_octaves = 3
+	noise_lo.frequency = 0.02
+	noise_lo.seed = _seed + 2000
+
+	var noise_hi := FastNoiseLite.new()
+	noise_hi.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise_hi.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise_hi.fractal_octaves = 2
+	noise_hi.frequency = 0.06
+	noise_hi.seed = _seed + 2100
 
 	var w := grid.width
 	var h := grid.height
@@ -31,15 +40,19 @@ func _generate_temperature(grid: TorusGrid, temp_map: PackedFloat32Array, proj: 
 				var wp := proj.grid_to_sphere(float(x), float(y)).normalized()
 				var abs_lat := asin(clampf(absf(wp.y), 0.0, 1.0)) / (PI * 0.5)
 				latitude_factor = 1.0 - abs_lat
-				noise_var = noise.get_noise_3d(wp.x * 50.0, wp.y * 50.0, wp.z * 50.0) * 0.15
+				var sp := wp * 50.0
+				noise_var = noise_lo.get_noise_3d(sp.x, sp.y, sp.z) * 0.12 + noise_hi.get_noise_3d(sp.x, sp.y, sp.z) * 0.06
 			else:
 				latitude_factor = 1.0 - abs((float(y) / float(h)) * 2.0 - 1.0)
-				noise_var = noise.get_noise_2d(float(x), float(y)) * 0.15
+				noise_var = noise_lo.get_noise_2d(float(x), float(y)) * 0.12
 
 			var base_temp: float = latitude_factor
 			var altitude := grid.get_height(x, y)
-			var altitude_cooling := maxf(altitude, 0.0) * 0.4
-			var temp := clampf(base_temp - altitude_cooling + noise_var, 0.0, 1.0)
+			var altitude_cooling := maxf(altitude, 0.0) * 0.5
+			var ocean_warming := 0.0
+			if altitude < GameConfig.SEA_LEVEL:
+				ocean_warming = 0.06 * clampf(latitude_factor, 0.2, 0.8)
+			var temp := clampf(base_temp - altitude_cooling + noise_var + ocean_warming, 0.0, 1.0)
 			temp_map[y * w + x] = temp
 
 
@@ -63,7 +76,7 @@ func _generate_moisture(grid: TorusGrid, moist_map: PackedFloat32Array, proj: Pl
 		var pos := queue[head]
 		head += 1
 		var current_dist := distance_to_water[pos.y * w + pos.x]
-		if current_dist > 30.0:
+		if current_dist > 50.0:
 			continue
 		for neighbor in grid.get_neighbors_4(pos.x, pos.y):
 			var ni := neighbor.y * w + neighbor.x
@@ -72,25 +85,58 @@ func _generate_moisture(grid: TorusGrid, moist_map: PackedFloat32Array, proj: Pl
 				distance_to_water[ni] = new_dist
 				queue.append(neighbor)
 
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.04
-	noise.seed = _seed + 3000
+	var noise_lo := FastNoiseLite.new()
+	noise_lo.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise_lo.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise_lo.fractal_octaves = 4
+	noise_lo.frequency = 0.025
+	noise_lo.seed = _seed + 3000
+
+	var noise_hi := FastNoiseLite.new()
+	noise_hi.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise_hi.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise_hi.fractal_octaves = 2
+	noise_hi.frequency = 0.07
+	noise_hi.seed = _seed + 3100
 
 	for y in range(h):
 		for x in range(w):
 			var dist := distance_to_water[y * w + x]
-			var water_proximity := clampf(1.0 - dist / 30.0, 0.0, 1.0)
+			var water_proximity := clampf(1.0 - dist / 50.0, 0.0, 1.0)
 
 			var noise_var: float
 			var wind_bias: float
+			var itcz_boost := 0.0
+			var rain_shadow := 0.0
+			var orographic := 0.0
+
 			if proj:
 				var wp := proj.grid_to_sphere(float(x), float(y)).normalized()
-				noise_var = noise.get_noise_3d(wp.x * 50.0, wp.y * 50.0, wp.z * 50.0) * 0.2 + 0.1
-				wind_bias = wp.x * 0.08
-			else:
-				noise_var = noise.get_noise_2d(float(x), float(y)) * 0.2 + 0.1
-				wind_bias = sin(float(x) / float(w) * TAU) * 0.08
+				var sp := wp * 50.0
+				noise_var = noise_lo.get_noise_3d(sp.x, sp.y, sp.z) * 0.18 + noise_hi.get_noise_3d(sp.x, sp.y, sp.z) * 0.08 + 0.08
+				wind_bias = wp.x * 0.06
 
-			var moist := clampf(water_proximity * 0.7 + noise_var + wind_bias, 0.0, 1.0)
+				var abs_lat := absf(wp.y)
+				itcz_boost = clampf(1.0 - abs_lat / 0.2, 0.0, 1.0) * 0.25
+
+				var altitude := grid.get_height(x, y)
+				if altitude > 0.2:
+					var slope := _get_slope(grid, x, y)
+					var windward := clampf(slope * wp.x, 0.0, 1.0)
+					orographic = windward * 0.15
+					var leeward := clampf(-slope * wp.x, 0.0, 1.0)
+					rain_shadow = -leeward * 0.2
+			else:
+				noise_var = noise_lo.get_noise_2d(float(x), float(y)) * 0.18 + 0.08
+				wind_bias = sin(float(x) / float(w) * TAU) * 0.06
+				var lat_frac := absf(float(y) / float(h) * 2.0 - 1.0)
+				itcz_boost = clampf(1.0 - lat_frac / 0.15, 0.0, 1.0) * 0.25
+
+			var moist := clampf(water_proximity * 0.55 + noise_var + wind_bias + itcz_boost + orographic + rain_shadow, 0.0, 1.0)
 			moist_map[y * w + x] = moist
+
+
+func _get_slope(grid: TorusGrid, x: int, y: int) -> float:
+	var left := grid.get_height(grid.wrap_x(x - 1), y)
+	var right := grid.get_height(grid.wrap_x(x + 1), y)
+	return right - left

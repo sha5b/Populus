@@ -4,9 +4,13 @@ class_name SysPredatorPrey
 var grid: TorusGrid = null
 var projector: PlanetProjector = null
 
-const TICK_INTERVAL := 1.5
+const TICK_INTERVAL := 2.0
+const SPATIAL_CELL := 16
+const BATCH_SIZE := 20
 var _timer := 0.0
+var _batch_offset := 0
 const KILL_RANGE := 2
+var _spatial_prey: Dictionary = {}
 
 
 func setup(g: TorusGrid, proj: PlanetProjector) -> void:
@@ -25,14 +29,22 @@ func update(world: Node, delta: float) -> void:
 	var predators := ecs.query(["ComPredator", "ComFaunaSpecies", "ComPosition", "ComAiState", "ComHunger"])
 	var prey_entities := ecs.query(["ComPrey", "ComFaunaSpecies", "ComPosition", "ComHealth"])
 
-	var prey_by_species: Dictionary = {}
+	_spatial_prey.clear()
 	for pid in prey_entities:
-		var ps: ComFaunaSpecies = ecs.get_component(pid, "ComFaunaSpecies") as ComFaunaSpecies
-		if not prey_by_species.has(ps.species_key):
-			prey_by_species[ps.species_key] = []
-		prey_by_species[ps.species_key].append(pid)
+		var pp: ComPosition = ecs.get_component(pid, "ComPosition") as ComPosition
+		var cx := pp.grid_x / SPATIAL_CELL
+		var cy := pp.grid_y / SPATIAL_CELL
+		var key := cy * 1000 + cx
+		if not _spatial_prey.has(key):
+			_spatial_prey[key] = []
+		_spatial_prey[key].append(pid)
 
-	for eid in predators:
+	var total := predators.size()
+	var count := mini(BATCH_SIZE, total)
+	var start := _batch_offset
+
+	for _i in range(count):
+		var eid: int = predators[(start + _i) % total]
 		var ai: ComAiState = ecs.get_component(eid, "ComAiState") as ComAiState
 		if ai.current_state != DefEnums.AIState.HUNTING:
 			continue
@@ -41,7 +53,7 @@ func update(world: Node, delta: float) -> void:
 		var p_pos: ComPosition = ecs.get_component(eid, "ComPosition") as ComPosition
 		var hunger: ComHunger = ecs.get_component(eid, "ComHunger") as ComHunger
 
-		var target_id := _find_nearest_prey(ecs, p_pos, pred, prey_by_species)
+		var target_id := _find_nearest_prey(ecs, p_pos, pred, _spatial_prey)
 		if target_id < 0:
 			ai.current_state = DefEnums.AIState.WANDERING
 			ai.state_timer = 0.0
@@ -65,23 +77,31 @@ func update(world: Node, delta: float) -> void:
 		if t_prey != null:
 			t_prey.is_fleeing = true
 
+	_batch_offset = (start + count) % maxi(total, 1)
 	_run_flee(ecs, prey_entities)
 
 
-func _find_nearest_prey(ecs: EcsWorld, hunter_pos: ComPosition, pred: ComPredator, prey_by_species: Dictionary) -> int:
+func _find_nearest_prey(ecs: EcsWorld, hunter_pos: ComPosition, pred: ComPredator, _prey_by_species: Dictionary) -> int:
 	var best_id := -1
 	var best_dist := pred.hunt_range + 1.0
-	for prey_key in pred.prey_types:
-		if not prey_by_species.has(prey_key):
-			continue
-		for pid in prey_by_species[prey_key]:
-			var pp: ComPosition = ecs.get_component(pid, "ComPosition") as ComPosition
-			if pp == null:
+	var cx := hunter_pos.grid_x / SPATIAL_CELL
+	var cy := hunter_pos.grid_y / SPATIAL_CELL
+	for sdy in range(-1, 2):
+		for sdx in range(-1, 2):
+			var key := (cy + sdy) * 1000 + (cx + sdx)
+			if not _spatial_prey.has(key):
 				continue
-			var d := _grid_distance(hunter_pos, pp)
-			if d < best_dist:
-				best_dist = d
-				best_id = pid
+			for pid in _spatial_prey[key]:
+				var ps: ComFaunaSpecies = ecs.get_component(pid, "ComFaunaSpecies") as ComFaunaSpecies
+				if ps == null or not pred.prey_types.has(ps.species_key):
+					continue
+				var pp: ComPosition = ecs.get_component(pid, "ComPosition") as ComPosition
+				if pp == null:
+					continue
+				var d := _grid_distance(hunter_pos, pp)
+				if d < best_dist:
+					best_dist = d
+					best_id = pid
 	return best_id
 
 
@@ -106,6 +126,8 @@ func _move_toward(mover: ComPosition, target: ComPosition) -> void:
 		dy = -sign(dy) * (grid.height - absi(dy))
 	var sx := signi(dx)
 	var sy := signi(dy)
+	mover.prev_world_pos = mover.world_pos
+	mover.lerp_t = 0.0
 	mover.grid_x = grid.wrap_x(mover.grid_x + sx)
 	mover.grid_y = grid.wrap_y(mover.grid_y + sy)
 	var h := grid.get_height(mover.grid_x, mover.grid_y)

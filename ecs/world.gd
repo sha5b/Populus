@@ -5,6 +5,8 @@ var _next_id: int = 1
 var entities: Dictionary = {}
 var components: Dictionary = {}
 var systems: Array = []
+var _query_cache: Dictionary = {}
+var _cache_generation: int = 0
 
 
 func create_entity() -> Entity:
@@ -19,6 +21,7 @@ func add_component(entity: Entity, component: Component) -> void:
 	if not components.has(t):
 		components[t] = {}
 	components[t][entity.id] = component
+	_cache_generation += 1
 
 
 func get_component(entity_id: int, comp_type: String) -> Component:
@@ -34,6 +37,11 @@ func get_components(comp_type: String) -> Dictionary:
 func query(required: Array[String]) -> Array[int]:
 	if required.is_empty():
 		return []
+	var cache_key := ",".join(required)
+	if _query_cache.has(cache_key):
+		var cached: Array = _query_cache[cache_key]
+		if cached[0] == _cache_generation:
+			return cached[1]
 	var base := get_components(required[0])
 	var result: Array[int] = []
 	for id in base.keys():
@@ -44,6 +52,7 @@ func query(required: Array[String]) -> Array[int]:
 				break
 		if ok:
 			result.append(id)
+	_query_cache[cache_key] = [_cache_generation, result]
 	return result
 
 
@@ -51,6 +60,7 @@ func remove_entity(entity_id: int) -> void:
 	entities.erase(entity_id)
 	for comp_type in components.keys():
 		components[comp_type].erase(entity_id)
+	_cache_generation += 1
 
 
 func add_system(system: System) -> void:

@@ -9,6 +9,7 @@ var temperature_map: PackedFloat32Array
 var moisture_map: PackedFloat32Array
 var base_temperature_map: PackedFloat32Array
 var base_moisture_map: PackedFloat32Array
+var biome_map: PackedInt32Array
 
 var time_system: SysTime
 var season_system: SysSeason
@@ -21,6 +22,16 @@ var rain_system: PlanetRain
 var atmo_grid: AtmosphereGrid
 var flora_renderer: PlanetFloraRenderer
 var fauna_renderer: PlanetFaunaRenderer
+var chunk_scheduler: ChunkScheduler
+var river_system: SysRiverFormation
+var micro_biome_system: SysMicroBiome
+var biome_reassign_system: SysBiomeReassign
+var water_grid: WaterGrid
+var water_mesh: PlanetWaterMesh
+var water_dynamics: SysWaterDynamics
+var _continentalness_map: PackedFloat32Array
+var _erosion_noise_map: PackedFloat32Array
+var _weirdness_map: PackedFloat32Array
 var _debug_label: Label
 
 
@@ -110,27 +121,31 @@ func _build_planet() -> void:
 
 
 func _add_water_sphere() -> void:
-	var water_mesh_inst := MeshInstance3D.new()
-	water_mesh_inst.name = "WaterSphere"
+	water_grid = WaterGrid.new()
+	water_grid.initialize(grid.width, grid.height, grid, temperature_map)
 
-	var sphere := SphereMesh.new()
-	var water_radius := GameConfig.PLANET_RADIUS + GameConfig.SEA_LEVEL * GameConfig.HEIGHT_SCALE
-	sphere.radius = water_radius
-	sphere.height = water_radius * 2.0
-	sphere.radial_segments = 64
-	sphere.rings = 32
-	water_mesh_inst.mesh = sphere
+	water_mesh = PlanetWaterMesh.new()
+	water_mesh.name = "WaterMesh"
+	water_mesh.setup(grid, projector, water_grid)
 
 	var water_shader := load("res://shaders/water.gdshader") as Shader
 	var water_mat := ShaderMaterial.new()
 	water_mat.shader = water_shader
-	water_mat.set_shader_parameter("water_color", Color(0.05, 0.15, 0.5, 0.7))
-	water_mat.set_shader_parameter("wave_speed", 1.0)
-	water_mat.set_shader_parameter("wave_height", 0.05)
-	water_mesh_inst.material_override = water_mat
+	water_mat.render_priority = 1
+	water_mesh.material_override = water_mat
 
-	add_child(water_mesh_inst)
-	print("Water sphere added.")
+	add_child(water_mesh)
+	water_mesh.build_mesh()
+	print("Water grid initialized: %d water tiles." % _count_water_tiles())
+
+
+func _count_water_tiles() -> int:
+	var count := 0
+	if water_grid:
+		for i in range(water_grid.width * water_grid.height):
+			if water_grid.water_depth[i] > 0.001:
+				count += 1
+	return count
 
 
 func _add_cloud_and_atmosphere() -> void:
@@ -151,7 +166,7 @@ func _add_cloud_and_atmosphere() -> void:
 func _add_rain_snow_particles() -> void:
 	rain_system = PlanetRain.new()
 	rain_system.name = "PlanetRain"
-	rain_system.setup(projector)
+	rain_system.setup(projector, grid)
 	add_child(rain_system)
 	print("Planet rain system added.")
 
@@ -193,6 +208,10 @@ func _generate_terrain() -> void:
 	var heightmap_gen := GenHeightmap.new(GameConfig.WORLD_SEED)
 	heightmap_gen.generate(grid, projector)
 
+	_continentalness_map = heightmap_gen.continentalness_map
+	_erosion_noise_map = heightmap_gen.erosion_map
+	_weirdness_map = heightmap_gen.weirdness_map
+
 	var w := grid.width
 	var h := grid.height
 	var total := w * h
@@ -201,30 +220,36 @@ func _generate_terrain() -> void:
 	temperature_map.resize(total)
 	moisture_map = PackedFloat32Array()
 	moisture_map.resize(total)
-	var biome_map_data := PackedInt32Array()
-	biome_map_data.resize(total)
+	biome_map = PackedInt32Array()
+	biome_map.resize(total)
 
 	var biome_gen := GenBiome.new(GameConfig.WORLD_SEED)
 	biome_gen.generate(grid, temperature_map, moisture_map, projector)
+
+	_prebake_erosion(moisture_map)
+	print("Erosion prebake complete.")
+
+	river_system = SysRiverFormation.new()
+	river_system.setup(grid, null, moisture_map)
+	print("River carving complete — rivers exist before biome assignment.")
 
 	base_temperature_map = temperature_map.duplicate()
 	base_moisture_map = moisture_map.duplicate()
 
 	GenBiomeAssignment.assign(
-		grid, temperature_map, moisture_map, biome_map_data,
-		heightmap_gen.continentalness_map,
-		heightmap_gen.erosion_map,
-		heightmap_gen.weirdness_map
+		grid, temperature_map, moisture_map, biome_map,
+		_continentalness_map, _erosion_noise_map, _weirdness_map
 	)
 
 	for y in range(h):
 		for x in range(w):
-			grid.set_biome(x, y, biome_map_data[y * w + x])
+			grid.set_biome(x, y, biome_map[y * w + x])
 
-	planet_mesh.set_biome_map(biome_map_data)
+	planet_mesh.set_biome_map(biome_map)
+	planet_mesh.set_river_map(river_system.river_map)
 	planet_mesh.build_mesh()
 
-	var flora_count := GenFlora.generate(world, grid, biome_map_data, projector)
+	var flora_count := GenFlora.generate(world, grid, biome_map, projector)
 	print("Flora generated: %d plants." % flora_count)
 
 	flora_renderer = PlanetFloraRenderer.new()
@@ -233,7 +258,7 @@ func _generate_terrain() -> void:
 	add_child(flora_renderer)
 
 	var fauna_gen := GenFauna.new()
-	fauna_gen.generate(world, grid, projector, biome_map_data)
+	fauna_gen.generate(world, grid, projector, biome_map)
 
 	fauna_renderer = PlanetFaunaRenderer.new()
 	fauna_renderer.name = "FaunaRenderer"
@@ -280,9 +305,25 @@ func _register_systems() -> void:
 	wind_ero.setup(grid, wind_system, moisture_map, weather_system)
 	world.add_system(wind_ero)
 
-	var rivers := SysRiverFormation.new()
-	rivers.setup(grid, time_system, moisture_map)
-	world.add_system(rivers)
+	river_system.time_system = time_system
+	world.add_system(river_system)
+
+	micro_biome_system = SysMicroBiome.new()
+	micro_biome_system.setup(grid, projector, temperature_map, moisture_map, biome_map, river_system.river_map)
+	world.add_system(micro_biome_system)
+
+	biome_reassign_system = SysBiomeReassign.new()
+	biome_reassign_system.setup(grid, temperature_map, moisture_map, biome_map, _continentalness_map, _erosion_noise_map, _weirdness_map)
+	world.add_system(biome_reassign_system)
+
+	chunk_scheduler = ChunkScheduler.new()
+	chunk_scheduler.name = "ChunkScheduler"
+	chunk_scheduler.setup(grid, 4, 0.5)
+	chunk_scheduler.register_processor(hydraulic.process_chunk)
+	chunk_scheduler.register_processor(thermal.process_chunk)
+	chunk_scheduler.register_processor(coastal.process_chunk)
+	chunk_scheduler.register_processor(wind_ero.process_chunk)
+	add_child(chunk_scheduler)
 
 	var atmo_fluid := SysAtmosphereFluid.new()
 	atmo_fluid.atmo_grid = atmo_grid
@@ -337,7 +378,11 @@ func _register_systems() -> void:
 	migration.setup(grid, projector, time_system)
 	world.add_system(migration)
 
-	print("All systems registered (including flora + fauna).")
+	water_dynamics = SysWaterDynamics.new()
+	water_dynamics.setup(grid, water_grid, weather_system, wind_system, temperature_map, moisture_map, river_system)
+	world.add_system(water_dynamics)
+
+	print("All systems registered (including flora + fauna + water).")
 
 
 func _add_debug_hud() -> void:
@@ -353,14 +398,60 @@ func _add_debug_hud() -> void:
 
 
 var _mesh_rebuild_timer: float = 0.0
-var _mesh_rebuild_interval: float = 5.0
+var _mesh_rebuild_interval: float = 30.0
+
+
+func _prebake_erosion(moist: PackedFloat32Array) -> void:
+	var prebake_hydraulic := SysHydraulicErosion.new()
+	prebake_hydraulic.grid = grid
+	prebake_hydraulic.erosion_rate = 0.5
+	prebake_hydraulic.deposition_rate = 0.25
+	prebake_hydraulic.particles_per_batch = 500
+	prebake_hydraulic.max_iterations = 80
+
+	var prebake_thermal := SysThermalErosion.new()
+	prebake_thermal.grid = grid
+	prebake_thermal.thermal_rate = 0.03
+
+	var prebake_coastal := SysCoastalErosion.new()
+	prebake_coastal.grid = grid
+
+	var prebake_wind := SysWindErosion.new()
+	prebake_wind.grid = grid
+	prebake_wind.moisture_map = moist
+	prebake_wind.wind_erosion_rate = 0.002
+
+	const PREBAKE_ITERATIONS := 4
+	for i in range(PREBAKE_ITERATIONS):
+		for _p in range(300):
+			var sx := randi() % grid.width
+			var sy := randi() % grid.height
+			if grid.get_height(sx, sy) > GameConfig.SEA_LEVEL:
+				prebake_hydraulic._trace_particle(float(sx), float(sy))
+
+		prebake_thermal.run_full_pass()
+		prebake_coastal.run_full_pass()
+		prebake_wind.run_full_pass()
+
+	print("Prebake: %d iterations of erosion on %dx%d grid" % [PREBAKE_ITERATIONS, grid.width, grid.height])
 
 
 func _process(delta: float) -> void:
 	_mesh_rebuild_timer += delta
 	if _mesh_rebuild_timer >= _mesh_rebuild_interval:
 		_mesh_rebuild_timer = 0.0
+		planet_mesh.set_biome_map(biome_map)
+		if river_system:
+			planet_mesh.set_river_map(river_system.river_map)
+		if micro_biome_system:
+			planet_mesh.set_micro_biome_map(micro_biome_system.micro_biome_map)
 		planet_mesh.build_mesh()
+
+	if chunk_scheduler:
+		var cam := get_viewport().get_camera_3d()
+		if cam and projector:
+			var grid_pos := projector.sphere_to_grid(cam.global_position)
+			chunk_scheduler.set_camera_grid_pos(float(grid_pos.x), float(grid_pos.y))
 
 	if time_system and _debug_label:
 		var weather_str := weather_system.get_state_string() if weather_system else "?"

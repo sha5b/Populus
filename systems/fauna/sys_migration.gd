@@ -96,6 +96,8 @@ func _step_toward(pos: ComPosition, target: Vector2i, species: ComFaunaSpecies) 
 	if h < GameConfig.SEA_LEVEL:
 		return
 
+	pos.prev_world_pos = pos.world_pos
+	pos.lerp_t = 0.0
 	pos.grid_x = nx
 	pos.grid_y = ny
 	var dir := projector.grid_to_sphere(float(nx) + 0.5, float(ny) + 0.5).normalized()

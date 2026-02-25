@@ -7,7 +7,9 @@ var temperature_map: PackedFloat32Array
 var time_system: SysTime = null
 
 var _accumulator: float = 0.0
-const TICK_INTERVAL := 2.0
+var _batch_offset: int = 0
+const TICK_INTERVAL := 4.0
+const BATCH_SIZE := 500
 const STAGE_THRESHOLDS := {
 	DefEnums.GrowthStage.SEED: 0.1,
 	DefEnums.GrowthStage.SAPLING: 0.3,
@@ -37,23 +39,27 @@ func update(_world: Node, delta: float) -> void:
 		return
 
 	var entities := ecs.query(["ComPlantSpecies", "ComGrowth", "ComPosition"])
-	_dead_queue.clear()
+	var total := entities.size()
+	if total == 0:
+		return
 
-	for eid in entities:
+	var seconds_per_year := float(GameConfig.HOURS_PER_DAY * GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR) * 60.0
+	var years_per_tick := (TICK_INTERVAL * GameConfig.TIME_SCALE) / seconds_per_year
+
+	_dead_queue.clear()
+	var count := mini(BATCH_SIZE, total)
+	var start := _batch_offset
+
+	for _i in range(count):
+		var eid: int = entities[(start + _i) % total]
 		var growth: ComGrowth = ecs.get_component(eid, "ComGrowth") as ComGrowth
-		var plant: ComPlantSpecies = ecs.get_component(eid, "ComPlantSpecies") as ComPlantSpecies
-		var pos: ComPosition = ecs.get_component(eid, "ComPosition") as ComPosition
 
 		if growth.stage == DefEnums.GrowthStage.DEAD:
 			_dead_queue.append(eid)
 			continue
 
-		var game_seconds_per_tick := TICK_INTERVAL * GameConfig.TIME_SCALE
-		var seconds_per_year := float(GameConfig.HOURS_PER_DAY * GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR) * 60.0
-		var years_per_tick := game_seconds_per_tick / seconds_per_year
 		growth.age += years_per_tick
 
-		var fertility := _get_fertility(pos, plant)
 		var age_frac := growth.age / growth.max_age if growth.max_age > 0.0 else 1.0
 		growth.growth_progress = clampf(age_frac, 0.0, 0.99)
 
@@ -61,6 +67,8 @@ func update(_world: Node, delta: float) -> void:
 
 		if growth.age >= growth.max_age:
 			growth.stage = DefEnums.GrowthStage.DEAD
+
+	_batch_offset = (start + count) % maxi(total, 1)
 
 	for eid in _dead_queue:
 		ecs.remove_entity(eid)

@@ -6,7 +6,7 @@ var wind_system: SysWind = null
 var weather_system: SysWeather = null
 
 var _sim_accumulator: float = 0.0
-const SIM_INTERVAL := 1.5
+const SIM_INTERVAL := 3.0
 
 var _adv_moisture: PackedFloat32Array
 var _adv_temp: PackedFloat32Array

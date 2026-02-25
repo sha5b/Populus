@@ -1,7 +1,7 @@
 extends Node
 
-const GRID_WIDTH: int = 128
-const GRID_HEIGHT: int = 128
+const GRID_WIDTH: int = 256
+const GRID_HEIGHT: int = 256
 const SEA_LEVEL: float = 0.0
 const TIME_SCALE: float = 20.0
 const MAX_POPULATION: int = 200

@@ -50,8 +50,27 @@ func _update_day_night() -> void:
 	sun_light.global_position = sun_pos
 	sun_light.look_at(Vector3.ZERO, Vector3.UP)
 
-	sun_light.light_energy = 1.2
-	sun_light.light_color = Color(1.0, 0.98, 0.95)
+	# Dawn/dusk coloring, night dimming
+	var day_t := 0.0
+	if hour_frac > 6.0 and hour_frac < 7.0:
+		day_t = (hour_frac - 6.0)
+	elif hour_frac >= 7.0 and hour_frac <= 19.0:
+		day_t = 1.0
+	elif hour_frac > 19.0 and hour_frac < 20.0:
+		day_t = 1.0 - (hour_frac - 19.0)
+
+	var energy := lerpf(0.15, 1.2, day_t)
+	sun_light.light_energy = energy
+
+	# Sunrise/sunset warm tint
+	if hour_frac > 5.5 and hour_frac < 7.5:
+		var dawn_t := 1.0 - absf(hour_frac - 6.5) / 1.0
+		sun_light.light_color = Color(1.0, 0.85, 0.7).lerp(Color(1.0, 0.98, 0.95), 1.0 - dawn_t)
+	elif hour_frac > 18.5 and hour_frac < 20.5:
+		var dusk_t := 1.0 - absf(hour_frac - 19.5) / 1.0
+		sun_light.light_color = Color(1.0, 0.75, 0.5).lerp(Color(1.0, 0.98, 0.95), 1.0 - dusk_t)
+	else:
+		sun_light.light_color = Color(1.0, 0.98, 0.95)
 
 
 func _season_name(s: int) -> String:

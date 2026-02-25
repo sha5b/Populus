@@ -101,8 +101,14 @@ func _spawn_animal(world: EcsWorld, species_key: String, data: Dictionary, gx: i
 	hunger.hunger_rate = data["hunger_rate"]
 	world.add_component(entity, hunger)
 
+	var energy := ComEnergy.new()
+	energy.current = rng.randf_range(50.0, 100.0)
+	world.add_component(entity, energy)
+
 	var ai := ComAiState.new()
-	ai.current_state = DefEnums.AIState.IDLE
+	var start_states := [DefEnums.AIState.WANDERING, DefEnums.AIState.FORAGING, DefEnums.AIState.WANDERING]
+	ai.current_state = start_states[rng.randi() % start_states.size()]
+	ai.state_timer = rng.randf_range(0.0, 2.0)
 	world.add_component(entity, ai)
 
 	var repro := ComReproduction.new()

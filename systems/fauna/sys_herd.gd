@@ -4,7 +4,8 @@ class_name SysHerd
 var grid: TorusGrid = null
 var projector: PlanetProjector = null
 
-const TICK_INTERVAL := 1.0
+const TICK_INTERVAL := 2.0
+const MAX_HERD_PROCESS := 8
 var _timer := 0.0
 
 const SEPARATION_WEIGHT := 1.5
@@ -37,6 +38,8 @@ func update(world: Node, delta: float) -> void:
 		var members: Array = herds[herd_id]
 		if members.size() < 2:
 			continue
+		if members.size() > MAX_HERD_PROCESS:
+			members = members.slice(0, MAX_HERD_PROCESS)
 		_apply_boids(ecs, members)
 
 
@@ -92,6 +95,8 @@ func _apply_boids(ecs: EcsWorld, members: Array) -> void:
 		if species.is_aquatic and target_h >= GameConfig.SEA_LEVEL:
 			continue
 
+		pos.prev_world_pos = pos.world_pos
+		pos.lerp_t = 0.0
 		pos.grid_x = nx
 		pos.grid_y = ny
 		var dir := projector.grid_to_sphere(float(nx) + 0.5, float(ny) + 0.5).normalized()

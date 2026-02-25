@@ -4,11 +4,16 @@ class_name SysRiverFormation
 var grid: TorusGrid = null
 var moisture_map: PackedFloat32Array
 var river_map: PackedFloat32Array
+var flow_map: PackedFloat32Array
 var time_system: SysTime = null
 
-var river_carve_rate: float = 0.005
-var river_moisture_boost: float = 0.3
-var river_moisture_radius: int = 3
+const RIVER_THRESHOLD := 8.0
+const CANYON_THRESHOLD := 40.0
+const BASE_CARVE_RATE := 0.015
+const CANYON_CARVE_RATE := 0.04
+const CARVE_PASSES := 3
+const RIVER_MOISTURE_BOOST := 0.25
+const RIVER_MOISTURE_RADIUS := 4
 
 var _last_season: int = -1
 var _river_count: int = 0
@@ -19,100 +24,130 @@ func setup(g: TorusGrid, ts: SysTime, moist: PackedFloat32Array) -> void:
 	grid = g
 	time_system = ts
 	moisture_map = moist
+	var total := g.width * g.height
 	river_map = PackedFloat32Array()
-	river_map.resize(g.width * g.height)
+	river_map.resize(total)
 	river_map.fill(0.0)
+	flow_map = PackedFloat32Array()
+	flow_map.resize(total)
+	flow_map.fill(0.0)
+	_run_initial_rivers()
+
+
+func _run_initial_rivers() -> void:
+	for _pass in range(CARVE_PASSES):
+		_recalculate_rivers()
+	print("Initial river carving: %d passes, %d river tiles, %d lakes" % [CARVE_PASSES, _river_count, _lake_count])
 
 
 func update(_world: Node, _delta: float) -> void:
 	if grid == null or time_system == null:
 		return
-
 	if time_system.season == _last_season:
 		return
 	_last_season = time_system.season
-
 	_recalculate_rivers()
 
 
 func _recalculate_rivers() -> void:
 	var w := grid.width
 	var h := grid.height
-
-	river_map.fill(0.0)
-	_river_count = 0
-	_lake_count = 0
+	var total := w * h
 
 	var flow_accumulation := PackedFloat32Array()
-	flow_accumulation.resize(w * h)
-	flow_accumulation.fill(1.0)
+	flow_accumulation.resize(total)
+	var flow_dir := PackedInt32Array()
+	flow_dir.resize(total)
+	flow_dir.fill(-1)
 
-	var sorted_tiles: Array[Vector2i] = []
-	var height_pairs: Array[float] = []
+	for i in range(total):
+		var ht := grid.get_height(i % w, i / w)
+		flow_accumulation[i] = 1.0 + maxf(moisture_map[i] if i < moisture_map.size() else 0.5, 0.0)
 
-	for y in range(h):
-		for x in range(w):
-			var ch := grid.get_tile_center_height(x, y)
-			if ch > GameConfig.SEA_LEVEL:
-				sorted_tiles.append(Vector2i(x, y))
-				height_pairs.append(ch)
+	var sorted_indices: Array[int] = []
+	sorted_indices.resize(total)
+	for i in range(total):
+		sorted_indices[i] = i
+	sorted_indices.sort_custom(func(a: int, b: int) -> bool:
+		return grid.get_height(a % w, a / w) > grid.get_height(b % w, b / w)
+	)
 
-	var indices: Array[int] = []
-	indices.resize(sorted_tiles.size())
-	for i in range(indices.size()):
-		indices[i] = i
-	indices.sort_custom(func(a: int, b: int) -> bool: return height_pairs[a] > height_pairs[b])
-
-	for idx in indices:
-		var pos := sorted_tiles[idx]
-		var x := pos.x
-		var y := pos.y
+	_lake_count = 0
+	for idx in sorted_indices:
+		var x := idx % w
+		var y := idx / w
 		var current_h := grid.get_height(x, y)
 
-		var lowest_n := Vector2i(-1, -1)
-		var lowest_h := current_h
-		for neighbor in grid.get_neighbors_4(x, y):
-			var nh := grid.get_height(neighbor.x, neighbor.y)
-			if nh < lowest_h:
-				lowest_h = nh
-				lowest_n = neighbor
+		if current_h <= GameConfig.SEA_LEVEL:
+			continue
 
-		if lowest_n.x < 0:
-			var tile_idx := y * w + x
-			if flow_accumulation[tile_idx] > 10.0:
+		var best_n := -1
+		var best_h := current_h
+		for neighbor in grid.get_neighbors_8(x, y):
+			var nh := grid.get_height(neighbor.x, neighbor.y)
+			if nh < best_h:
+				best_h = nh
+				best_n = neighbor.y * w + neighbor.x
+
+		if best_n < 0:
+			if flow_accumulation[idx] > 10.0:
 				_lake_count += 1
 			continue
 
-		var src_idx := y * w + x
-		var dst_idx := lowest_n.y * w + lowest_n.x
-		flow_accumulation[dst_idx] += flow_accumulation[src_idx]
+		flow_dir[idx] = best_n
+		flow_accumulation[best_n] += flow_accumulation[idx]
 
-	var river_threshold := 15.0
-	for y2 in range(h):
-		for x2 in range(w):
-			var tile_idx := y2 * w + x2
-			var flow := flow_accumulation[tile_idx]
-			if flow >= river_threshold and grid.get_height(x2, y2) > GameConfig.SEA_LEVEL:
-				river_map[tile_idx] = minf(flow / 100.0, 1.0)
-				grid.set_height(x2, y2, grid.get_height(x2, y2) - river_carve_rate)
+	river_map.fill(0.0)
+	_river_count = 0
 
-				for dy in range(-river_moisture_radius, river_moisture_radius + 1):
-					for dx in range(-river_moisture_radius, river_moisture_radius + 1):
-						var dist := sqrt(float(dx * dx + dy * dy))
-						if dist <= float(river_moisture_radius):
-							var mx := grid.wrap_x(x2 + dx)
-							var my := grid.wrap_y(y2 + dy)
-							var mi := my * w + mx
-							if mi < moisture_map.size():
-								var boost := river_moisture_boost * (1.0 - dist / float(river_moisture_radius))
-								moisture_map[mi] = clampf(moisture_map[mi] + boost, 0.0, 1.0)
+	for i in range(total):
+		var flow := flow_accumulation[i]
+		var x := i % w
+		var y := i / w
+		var ht := grid.get_height(x, y)
 
-	for y3 in range(h):
-		for x3 in range(w):
-			if river_map[y3 * w + x3] > 0.0:
-				_river_count += 1
+		if ht <= GameConfig.SEA_LEVEL:
+			continue
 
-	print("Rivers recalculated: %d river tiles, %d lakes" % [_river_count, _lake_count])
+		if flow >= RIVER_THRESHOLD:
+			var strength := clampf(flow / 80.0, 0.1, 1.0)
+			river_map[i] = strength
+			_river_count += 1
+
+			var carve := BASE_CARVE_RATE * clampf(flow / 30.0, 0.5, 3.0)
+			if flow >= CANYON_THRESHOLD:
+				carve = CANYON_CARVE_RATE * clampf(flow / 60.0, 1.0, 4.0)
+				_widen_canyon(x, y, clampf(flow / 100.0, 0.3, 0.8))
+			grid.set_height(x, y, maxf(ht - carve, GameConfig.SEA_LEVEL + 0.001))
+
+	flow_map = flow_accumulation
+	_apply_moisture_boost(w, h)
+
+
+func _widen_canyon(cx: int, cy: int, depth: float) -> void:
+	for neighbor in grid.get_neighbors_8(cx, cy):
+		var nh := grid.get_height(neighbor.x, neighbor.y)
+		if nh > GameConfig.SEA_LEVEL:
+			var side_carve := depth * 0.3
+			grid.set_height(neighbor.x, neighbor.y, maxf(nh - side_carve, GameConfig.SEA_LEVEL + 0.001))
+
+
+func _apply_moisture_boost(w: int, h: int) -> void:
+	for y in range(h):
+		for x in range(w):
+			var idx := y * w + x
+			if river_map[idx] <= 0.0:
+				continue
+			for dy in range(-RIVER_MOISTURE_RADIUS, RIVER_MOISTURE_RADIUS + 1):
+				for dx in range(-RIVER_MOISTURE_RADIUS, RIVER_MOISTURE_RADIUS + 1):
+					var dist := sqrt(float(dx * dx + dy * dy))
+					if dist <= float(RIVER_MOISTURE_RADIUS):
+						var mx := grid.wrap_x(x + dx)
+						var my := grid.wrap_y(y + dy)
+						var mi := my * w + mx
+						if mi < moisture_map.size():
+							var boost := RIVER_MOISTURE_BOOST * (1.0 - dist / float(RIVER_MOISTURE_RADIUS))
+							moisture_map[mi] = clampf(moisture_map[mi] + boost, 0.0, 1.0)
 
 
 func is_river(x: int, y: int) -> bool:

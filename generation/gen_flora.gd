@@ -1,7 +1,8 @@
 class_name GenFlora
 
 const MAX_FLORA_PER_TILE := 1
-const DENSITY_ROLL_SCALE := 1.2
+const DENSITY_ROLL_SCALE := 0.6
+const MAX_TOTAL_FLORA := 8000
 
 
 static func generate(world: EcsWorld, grid: TorusGrid, biome_map: PackedInt32Array, proj: PlanetProjector) -> int:
@@ -24,6 +25,9 @@ static func generate(world: EcsWorld, grid: TorusGrid, biome_map: PackedInt32Arr
 			var tree_density: float = biome_data.get("tree_density", 0.0)
 			if tree_density <= 0.0:
 				continue
+
+			if count >= MAX_TOTAL_FLORA:
+				break
 
 			var roll := rng.randf()
 			if roll > tree_density * DENSITY_ROLL_SCALE:
@@ -80,4 +84,5 @@ static func generate(world: EcsWorld, grid: TorusGrid, biome_map: PackedInt32Arr
 
 			count += 1
 
+	print("Flora generation capped at %d entities (max %d)" % [count, MAX_TOTAL_FLORA])
 	return count

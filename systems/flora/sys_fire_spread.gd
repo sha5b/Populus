@@ -6,7 +6,7 @@ var weather_system: SysWeather = null
 var wind_system: SysWind = null
 
 var _accumulator: float = 0.0
-const TICK_INTERVAL := 1.0
+const TICK_INTERVAL := 2.0
 const BURN_DURATION := 30.0
 const SPREAD_RANGE := 2
 const RAIN_EXTINGUISH_RATE := 10.0
@@ -44,7 +44,11 @@ func _try_lightning_ignition(ecs: EcsWorld) -> void:
 	if flammables.is_empty():
 		return
 
-	for eid in flammables.keys():
+	var keys := flammables.keys()
+	var check_count := mini(keys.size(), 50)
+	var offset := randi() % maxi(keys.size(), 1)
+	for _i in range(check_count):
+		var eid: int = keys[(offset + _i) % keys.size()]
 		var f: ComFlammable = flammables[eid]
 		if f.is_burning:
 			continue
@@ -86,14 +90,20 @@ func _spread_fire(ecs: EcsWorld) -> void:
 	if grid == null:
 		return
 
-	var burning_positions: Array[Vector2i] = []
 	var flammables := ecs.get_components("ComFlammable")
 	var positions := ecs.get_components("ComPosition")
 
+	var tile_to_eid: Dictionary = {}
+	var burning_positions: Array[Vector2i] = []
+
 	for eid in flammables.keys():
+		if not positions.has(eid):
+			continue
+		var p: ComPosition = positions[eid]
+		var key := p.grid_y * grid.width + p.grid_x
+		tile_to_eid[key] = eid
 		var f: ComFlammable = flammables[eid]
-		if f.is_burning and positions.has(eid):
-			var p: ComPosition = positions[eid]
+		if f.is_burning:
 			burning_positions.append(Vector2i(p.grid_x, p.grid_y))
 
 	if burning_positions.is_empty():
@@ -104,27 +114,25 @@ func _spread_fire(ecs: EcsWorld) -> void:
 		wind_bias = Vector2i(int(wind_system.direction.x), int(wind_system.direction.y))
 
 	for burn_pos in burning_positions:
-		for eid in flammables.keys():
-			var f: ComFlammable = flammables[eid]
-			if f.is_burning:
-				continue
-			if not positions.has(eid):
-				continue
-
-			var p: ComPosition = positions[eid]
-			var dx := absi(p.grid_x - burn_pos.x)
-			var dy := absi(p.grid_y - burn_pos.y)
-			if dx > SPREAD_RANGE or dy > SPREAD_RANGE:
-				continue
-
-			var wind_factor := 1.0
-			var to_target := Vector2i(p.grid_x - burn_pos.x, p.grid_y - burn_pos.y)
-			if wind_bias.x * to_target.x + wind_bias.y * to_target.y > 0:
-				wind_factor = 1.5
-
-			if randf() < f.flammability * 0.15 * wind_factor:
-				f.is_burning = true
-				f.burn_timer = BURN_DURATION
+		for sdy in range(-SPREAD_RANGE, SPREAD_RANGE + 1):
+			for sdx in range(-SPREAD_RANGE, SPREAD_RANGE + 1):
+				if sdx == 0 and sdy == 0:
+					continue
+				var nx := grid.wrap_x(burn_pos.x + sdx)
+				var ny := grid.wrap_y(burn_pos.y + sdy)
+				var key := ny * grid.width + nx
+				if not tile_to_eid.has(key):
+					continue
+				var eid: int = tile_to_eid[key]
+				var f: ComFlammable = flammables[eid]
+				if f.is_burning:
+					continue
+				var wind_factor := 1.0
+				if wind_bias.x * sdx + wind_bias.y * sdy > 0:
+					wind_factor = 1.5
+				if randf() < f.flammability * 0.15 * wind_factor:
+					f.is_burning = true
+					f.burn_timer = BURN_DURATION
 
 
 func ignite_at(ecs: EcsWorld, tile_x: int, tile_y: int) -> void:

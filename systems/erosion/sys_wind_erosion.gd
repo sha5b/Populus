@@ -13,6 +13,8 @@ var moisture_threshold: float = 0.2
 var _game_hours_acc: float = 0.0
 var _run_interval_hours: float = 12.0
 
+const PATCH_SIZE := 16
+
 
 func setup(g: TorusGrid, ws: SysWind, moist: PackedFloat32Array, wea: SysWeather = null) -> void:
 	grid = g
@@ -24,25 +26,26 @@ func setup(g: TorusGrid, ws: SysWind, moist: PackedFloat32Array, wea: SysWeather
 func update(_world: Node, delta: float) -> void:
 	if grid == null or wind_system == null:
 		return
-
 	_game_hours_acc += delta * GameConfig.TIME_SCALE / 60.0
-	if _game_hours_acc < _run_interval_hours:
+	if _game_hours_acc >= _run_interval_hours:
+		_game_hours_acc -= _run_interval_hours
+		_apply_weather_modifiers()
+
+
+func process_chunk(px: int, py: int, size: int) -> void:
+	if grid == null:
 		return
-	_game_hours_acc -= _run_interval_hours
-
-	_apply_weather_modifiers()
-	_run_batch()
+	_erode_patch(px, py, size)
 
 
-func _run_batch() -> void:
+func _erode_patch(px: int, py: int, size: int) -> void:
 	var w := grid.width
-	var h := grid.height
-	var moved := 0
-	var wind_dir := wind_system.direction
-	var wind_spd := wind_system.speed
-
-	for y in range(h):
-		for x in range(w):
+	var wind_dir := wind_system.direction if wind_system else Vector2.RIGHT
+	var wind_spd := wind_system.speed if wind_system else 1.0
+	for dy in range(size):
+		for dx in range(size):
+			var x := grid.wrap_x(px + dx)
+			var y := grid.wrap_y(py + dy)
 			var idx := y * w + x
 			if moisture_map.size() <= idx:
 				continue
@@ -63,10 +66,11 @@ func _run_batch() -> void:
 			var deposit_h := grid.get_height(deposit_x, deposit_y)
 			grid.set_height(deposit_x, deposit_y, deposit_h + pickup * 0.8)
 
-			moved += 1
 
-	if moved > 100:
-		print("Wind erosion: %d tiles affected" % moved)
+func run_full_pass() -> void:
+	for py in range(0, grid.height, PATCH_SIZE):
+		for px in range(0, grid.width, PATCH_SIZE):
+			_erode_patch(px, py, PATCH_SIZE)
 
 
 func _apply_weather_modifiers() -> void:

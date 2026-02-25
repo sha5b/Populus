@@ -7,9 +7,10 @@ var wind_system: SysWind = null
 var moisture_map: PackedFloat32Array
 
 var _accumulator: float = 0.0
-const TICK_INTERVAL := 3.0
-const MAX_SEEDS_PER_TICK := 20
+const TICK_INTERVAL := 5.0
+const MAX_SEEDS_PER_TICK := 10
 const MAX_FLORA_PER_TILE := 1
+const MAX_TOTAL_FLORA := 8000
 
 
 func setup(p_grid: TorusGrid, p_proj: PlanetProjector, p_wind: SysWind, p_moisture: PackedFloat32Array) -> void:
@@ -29,9 +30,12 @@ func update(_world: Node, delta: float) -> void:
 	if ecs == null or grid == null:
 		return
 
+	var flora_count := ecs.get_components("ComPlantSpecies").size()
+	if flora_count >= MAX_TOTAL_FLORA:
+		return
+
 	var entities := ecs.query(["ComPlantSpecies", "ComGrowth", "ComSeedDispersal", "ComPosition"])
 	var seeds_spawned := 0
-	var occupied := _build_occupancy_map(ecs)
 
 	for eid in entities:
 		if seeds_spawned >= MAX_SEEDS_PER_TICK:
@@ -55,12 +59,7 @@ func update(_world: Node, delta: float) -> void:
 		if target.x < 0:
 			continue
 
-		var tile_key := target.y * grid.width + target.x
-		if occupied.has(tile_key):
-			continue
-
 		_spawn_seed(ecs, target, plant, seed_comp)
-		occupied[tile_key] = true
 		seeds_spawned += 1
 
 

@@ -5,21 +5,22 @@ var current_state: int = DefEnums.WeatherState.CLEAR
 var time_system: SysTime = null
 
 var _transition_timer: float = 0.0
-var _next_check: float = 120.0
+var _next_check: float = 40.0
 
 const TRANSITION_TABLE := {
 	DefEnums.WeatherState.CLEAR: {
-		DefEnums.WeatherState.CLOUDY: 0.3,
-		DefEnums.WeatherState.FOG: 0.05,
+		DefEnums.WeatherState.CLOUDY: 0.45,
+		DefEnums.WeatherState.FOG: 0.08,
 	},
 	DefEnums.WeatherState.CLOUDY: {
-		DefEnums.WeatherState.CLEAR: 0.3,
-		DefEnums.WeatherState.RAIN: 0.4,
-		DefEnums.WeatherState.FOG: 0.05,
+		DefEnums.WeatherState.CLEAR: 0.2,
+		DefEnums.WeatherState.RAIN: 0.5,
+		DefEnums.WeatherState.FOG: 0.08,
 	},
 	DefEnums.WeatherState.RAIN: {
-		DefEnums.WeatherState.STORM: 0.2,
-		DefEnums.WeatherState.CLOUDY: 0.4,
+		DefEnums.WeatherState.STORM: 0.3,
+		DefEnums.WeatherState.CLOUDY: 0.3,
+		DefEnums.WeatherState.SNOW: 0.1,
 	},
 	DefEnums.WeatherState.STORM: {
 		DefEnums.WeatherState.RAIN: 0.5,
@@ -30,8 +31,9 @@ const TRANSITION_TABLE := {
 		DefEnums.WeatherState.CLEAR: 0.2,
 	},
 	DefEnums.WeatherState.FOG: {
-		DefEnums.WeatherState.CLEAR: 0.4,
-		DefEnums.WeatherState.CLOUDY: 0.3,
+		DefEnums.WeatherState.CLEAR: 0.3,
+		DefEnums.WeatherState.CLOUDY: 0.4,
+		DefEnums.WeatherState.RAIN: 0.1,
 	},
 }
 
@@ -48,7 +50,7 @@ func update(_world: Node, delta: float) -> void:
 	if _transition_timer < _next_check:
 		return
 	_transition_timer = 0.0
-	_next_check = randf_range(90.0, 180.0)
+	_next_check = randf_range(40.0, 100.0)
 	_try_transition()
 
 

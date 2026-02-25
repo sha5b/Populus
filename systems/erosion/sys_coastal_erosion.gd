@@ -11,6 +11,8 @@ var coastal_max_height: float = 0.1
 var _game_hours_acc: float = 0.0
 var _run_interval_hours: float = 12.0
 
+const PATCH_SIZE := 16
+
 
 func setup(g: TorusGrid, ws: SysWind, ts: SysTime) -> void:
 	grid = g
@@ -18,26 +20,22 @@ func setup(g: TorusGrid, ws: SysWind, ts: SysTime) -> void:
 	time_system = ts
 
 
-func update(_world: Node, delta: float) -> void:
-	if grid == null or time_system == null:
+func update(_world: Node, _delta: float) -> void:
+	pass
+
+
+func process_chunk(px: int, py: int, size: int) -> void:
+	if grid == null:
 		return
-
-	_game_hours_acc += delta * GameConfig.TIME_SCALE / 60.0
-	if _game_hours_acc < _run_interval_hours:
-		return
-	_game_hours_acc -= _run_interval_hours
-
-	_run_batch()
+	_erode_patch(px, py, size)
 
 
-func _run_batch() -> void:
-	var w := grid.width
-	var h := grid.height
-	var eroded := 0
+func _erode_patch(px: int, py: int, size: int) -> void:
 	var wind_speed := wind_system.speed if wind_system else 1.0
-
-	for y in range(h):
-		for x in range(w):
+	for dy in range(size):
+		for dx in range(size):
+			var x := grid.wrap_x(px + dx)
+			var y := grid.wrap_y(py + dy)
 			var center_h := grid.get_height(x, y)
 			if center_h <= GameConfig.SEA_LEVEL or center_h > coastal_max_height:
 				continue
@@ -65,7 +63,8 @@ func _run_batch() -> void:
 			if deepest_neighbor.x >= 0 and deepest_h < GameConfig.SEA_LEVEL:
 				grid.set_height(deepest_neighbor.x, deepest_neighbor.y, deepest_h + erosion * 0.5)
 
-			eroded += 1
 
-	if eroded > 0:
-		print("Coastal erosion: %d tiles eroded" % eroded)
+func run_full_pass() -> void:
+	for py in range(0, grid.height, PATCH_SIZE):
+		for px in range(0, grid.width, PATCH_SIZE):
+			_erode_patch(px, py, PATCH_SIZE)

@@ -25,29 +25,28 @@ func setup(g: TorusGrid, ts: SysTime, ws: SysWeather = null) -> void:
 	weather_system = ws
 
 
+const PARTICLES_PER_CHUNK := 10
+
+
 func update(_world: Node, delta: float) -> void:
 	if grid == null or time_system == null:
 		return
-
 	_game_hours_acc += delta * GameConfig.TIME_SCALE / 60.0
-	if _game_hours_acc < _run_interval_hours:
+	if _game_hours_acc >= _run_interval_hours:
+		_game_hours_acc -= _run_interval_hours
+		_apply_weather_modifiers()
+
+
+func process_chunk(px: int, py: int, size: int) -> void:
+	if grid == null:
 		return
-	_game_hours_acc -= _run_interval_hours
-
-	_apply_weather_modifiers()
-
-	var total_moved := 0.0
-	for i in range(particles_per_batch):
-		var sx := randi() % grid.width
-		var sy := randi() % grid.height
+	for _i in range(PARTICLES_PER_CHUNK):
+		var sx := px + randi() % size
+		var sy := py + randi() % size
+		sx = grid.wrap_x(sx)
+		sy = grid.wrap_y(sy)
 		if grid.get_height(sx, sy) > GameConfig.SEA_LEVEL:
-			total_moved += _trace_particle(float(sx), float(sy))
-
-	_total_particles += particles_per_batch
-	if _total_particles % 5000 == 0:
-		print("Hydraulic erosion: %d particles traced, avg moved: %.4f" % [
-			_total_particles, total_moved / float(particles_per_batch)
-		])
+			_trace_particle(float(sx), float(sy))
 
 
 func _trace_particle(x: float, y: float) -> float:

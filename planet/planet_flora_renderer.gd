@@ -9,7 +9,7 @@ var _multimeshes: Dictionary = {}
 var _mesh_cache: Dictionary = {}
 
 var _rebuild_timer: float = 0.0
-const REBUILD_INTERVAL := 2.0
+const REBUILD_INTERVAL := 4.0
 const MAX_INSTANCES_PER_TYPE := 4096
 
 

@@ -4,7 +4,7 @@ class_name SysReproduction
 var grid: TorusGrid = null
 var projector: PlanetProjector = null
 
-const TICK_INTERVAL := 3.0
+const TICK_INTERVAL := 5.0
 var _timer := 0.0
 
 const MATE_RANGE := 5
@@ -87,11 +87,11 @@ func _count_species(ecs: EcsWorld, entities: Array[int]) -> void:
 
 func _get_species_cap(species_key: String) -> int:
 	var data: Dictionary = DefFauna.SPECIES_DATA.get(species_key, {})
-	var base_cap := 60
+	var base_cap := 40
 	if data.get("social", "solitary") == "solitary":
-		base_cap = 15
+		base_cap = 12
 	elif data.get("social", "") == "pack":
-		base_cap = 25
+		base_cap = 20
 	return base_cap
 
 
@@ -162,8 +162,13 @@ func _spawn_offspring(ecs: EcsWorld, data: Dictionary) -> void:
 	hunger.hunger_rate = sp_data["hunger_rate"]
 	ecs.add_component(entity, hunger)
 
+	var energy := ComEnergy.new()
+	energy.current = 70.0
+	ecs.add_component(entity, energy)
+
 	var ai := ComAiState.new()
-	ai.current_state = DefEnums.AIState.IDLE
+	ai.current_state = DefEnums.AIState.WANDERING
+	ai.state_timer = randf_range(0.0, 1.0)
 	ecs.add_component(entity, ai)
 
 	var repro := ComReproduction.new()

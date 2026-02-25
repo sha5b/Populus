@@ -4,6 +4,8 @@ class_name PlanetMesh
 var grid: TorusGrid
 var projector: PlanetProjector
 var biome_map: PackedInt32Array
+var river_map: PackedFloat32Array
+var micro_biome_map: PackedInt32Array
 var is_dirty: bool = false
 
 const FACE_RES := 64
@@ -20,63 +22,60 @@ func set_biome_map(bm: PackedInt32Array) -> void:
 	biome_map = bm
 
 
+func set_river_map(rm: PackedFloat32Array) -> void:
+	river_map = rm
+
+
+func set_micro_biome_map(mbm: PackedInt32Array) -> void:
+	micro_biome_map = mbm
+
+
 func build_mesh() -> void:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
+
+	var res1 := FACE_RES + 1
+	var verts_per_face := res1 * res1
+	var total_verts := NUM_FACES * verts_per_face
+	var total_indices := NUM_FACES * FACE_RES * FACE_RES * 6
 
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
-
-	var total_quads := NUM_FACES * FACE_RES * FACE_RES
-	verts.resize(total_quads * 4)
-	normals.resize(total_quads * 4)
-	colors.resize(total_quads * 4)
-	indices.resize(total_quads * 6)
+	verts.resize(total_verts)
+	normals.resize(total_verts)
+	colors.resize(total_verts)
+	indices.resize(total_indices)
 
 	var vi := 0
 	var ii := 0
 
 	for face in range(NUM_FACES):
+		var face_base := vi
+		for fv in range(res1):
+			for fu in range(res1):
+				var u := float(fu) / float(FACE_RES)
+				var v := float(fv) / float(FACE_RES)
+				var pos := _vertex_at(face, u, v)
+				verts[vi] = pos
+				normals[vi] = pos.normalized()
+				var gf := _world_to_grid_frac(projector.cube_sphere_point(face, u, v))
+				colors[vi] = _sample_color_blended(gf)
+				vi += 1
+
 		for fv in range(FACE_RES):
 			for fu in range(FACE_RES):
-				var u0 := float(fu) / float(FACE_RES)
-				var u1 := float(fu + 1) / float(FACE_RES)
-				var v0 := float(fv) / float(FACE_RES)
-				var v1 := float(fv + 1) / float(FACE_RES)
-
-				var p00 := _vertex_at(face, u0, v0)
-				var p10 := _vertex_at(face, u1, v0)
-				var p01 := _vertex_at(face, u0, v1)
-				var p11 := _vertex_at(face, u1, v1)
-
-				verts[vi] = p00
-				verts[vi + 1] = p10
-				verts[vi + 2] = p01
-				verts[vi + 3] = p11
-
-				normals[vi] = p00.normalized()
-				normals[vi + 1] = p10.normalized()
-				normals[vi + 2] = p01.normalized()
-				normals[vi + 3] = p11.normalized()
-
-				var gf00 := _world_to_grid_frac(projector.cube_sphere_point(face, u0, v0))
-				var h00 := _sample_height_bilinear(gf00.x, gf00.y)
-				var col := _sample_color_at_grid(gf00, h00)
-				colors[vi] = col
-				colors[vi + 1] = col
-				colors[vi + 2] = col
-				colors[vi + 3] = col
-
-				indices[ii] = vi
-				indices[ii + 1] = vi + 2
-				indices[ii + 2] = vi + 1
-				indices[ii + 3] = vi + 1
-				indices[ii + 4] = vi + 2
-				indices[ii + 5] = vi + 3
-
-				vi += 4
+				var i00 := face_base + fv * res1 + fu
+				var i10 := i00 + 1
+				var i01 := i00 + res1
+				var i11 := i01 + 1
+				indices[ii] = i00
+				indices[ii + 1] = i01
+				indices[ii + 2] = i10
+				indices[ii + 3] = i10
+				indices[ii + 4] = i01
+				indices[ii + 5] = i11
 				ii += 6
 
 	arrays[Mesh.ARRAY_VERTEX] = verts
@@ -126,19 +125,62 @@ func _vertex_at(face: int, u: float, v: float) -> Vector3:
 	return equirect_dir * (projector.radius + h * projector.height_scale)
 
 
-func _sample_color_at_grid(gf: Vector2, height: float) -> Color:
-	var gx := int(gf.x) % grid.width
-	if gx < 0:
-		gx += grid.width
-	var gy := clampi(int(gf.y), 0, grid.height - 1)
+func _sample_color_blended(gf: Vector2) -> Color:
+	var fx: float = gf.x
+	var fy: float = gf.y
+	var ix := int(floor(fx))
+	var iy := int(floor(fy))
+	var dx: float = fx - floor(fx)
+	var dy: float = fy - floor(fy)
+
+	var c00 := _color_at_tile(ix, iy)
+	var c10 := _color_at_tile(ix + 1, iy)
+	var c01 := _color_at_tile(ix, iy + 1)
+	var c11 := _color_at_tile(ix + 1, iy + 1)
+
+	var top := c00.lerp(c10, dx)
+	var bot := c01.lerp(c11, dx)
+	return top.lerp(bot, dy)
+
+
+func _color_at_tile(tx: int, ty: int) -> Color:
 	var w := grid.width
+	var gx := tx % w
+	if gx < 0:
+		gx += w
+	var gy := clampi(ty, 0, grid.height - 1)
 	var idx := gy * w + gx
+	var height := grid.get_height(gx, gy)
+
+	if river_map.size() > idx and idx >= 0:
+		if river_map[idx] > 0.0:
+			var river_strength := clampf(river_map[idx], 0.0, 1.0)
+			var shallow := Color(0.2, 0.35, 0.55)
+			var deep := Color(0.08, 0.15, 0.45)
+			return shallow.lerp(deep, river_strength)
 
 	if biome_map.size() > idx and idx >= 0:
 		var biome: int = biome_map[idx]
 		if DefBiomes.BIOME_DATA.has(biome):
 			var base_color: Color = DefBiomes.BIOME_DATA[biome]["color"]
 			var shade := clampf(0.8 + height * 0.5, 0.6, 1.2)
-			return base_color * shade
+			var col := base_color * shade
+			col = _apply_micro_tint(col, idx)
+			return col
 
 	return projector.height_color(height)
+
+
+func _apply_micro_tint(base: Color, idx: int) -> Color:
+	if micro_biome_map.size() <= idx or idx < 0:
+		return base
+	var mb: int = micro_biome_map[idx]
+	if mb == DefMicroBiomes.MicroBiomeType.STANDARD:
+		return base
+	if not DefMicroBiomes.MICRO_DATA.has(mb):
+		return base
+	var tint: Color = DefMicroBiomes.MICRO_DATA[mb]["color_tint"]
+	var blend := tint.a
+	if blend <= 0.0:
+		return base
+	return base.lerp(Color(tint.r, tint.g, tint.b), blend)

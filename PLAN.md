@@ -37,6 +37,11 @@ PART B — NATURE LIVES (no humans yet, planet ecology runs itself)
   Phase 7e: Volumetric Cloud System (cube sphere + fluid) ..... ✅ DONE
   Phase 8:  Flora System (trees grow, spread seeds, burn) ..... ✅ DONE
   Phase 9:  Fauna System (animals eat, hunt, flee, breed) ..... ✅ DONE
+  Phase 9b: Fauna Utility AI & Optimization ................... ✅ DONE
+  Phase 9c: River & Canyon Formation .......................... ✅ DONE
+  Phase 9d: Micro-Biome System ................................ ✅ DONE
+  Phase 9e: Weather Visuals Fix (rain/lightning/fog) .......... ✅ DONE
+  Phase 9f: Water Dynamics System ............................. ✅ DONE
 
 PART C — CIVILIZATION LIVES (tribes run themselves, no player tribe)
   Phase 10: Tribes, Followers & Autonomous Settlement ......... PLANNED
@@ -111,6 +116,7 @@ populus/
 │   ├── com_reproduction.gd                    # maturity, gestation, offspring
 │   ├── com_migration.gd                       # preferred_biome, threshold, target
 │   ├── com_hunger.gd                          # current, max, rates
+│   ├── com_energy.gd                          # current, max, drain_rate, rest_rate
 │   │
 │   ├── com_plant_species.gd                   # name, biomes, water/light need
 │   ├── com_growth.gd                          # stage, rate, age, max_age
@@ -196,6 +202,7 @@ populus/
 │   ├── def_spells.gd                          # SpellType enum + per-spell stats dict
 │   ├── def_fauna.gd                           # species name → stats dict
 │   ├── def_flora.gd                           # species name → stats dict
+│   ├── def_micro_biomes.gd                    # MicroBiomeType enum + tint/modifier data
 │   └── def_enums.gd                           # shared enums (AIState, TaskType, Season, etc.)
 │
 ├── planet/                                    # ─── PLANET GEOMETRY (not ECS, pure math/rendering) ───
@@ -206,6 +213,8 @@ populus/
 │   ├── planet_cloud_layer.gd                  # volumetric cloud chunk manager (96 MeshInstance3D)
 │   ├── planet_atmosphere.gd                   # atmospheric glow shell
 │   ├── planet_rain.gd                         # planet-local rain/snow emitters (8 GPUParticles3D)
+│   ├── planet_water_mesh.gd                   # cube-sphere water mesh (depth/flow/temp vertex data)
+│   ├── water_grid.gd                          # per-tile water data (depth, flow, temp, waves)
 │   ├── atmosphere_grid.gd                     # cube sphere 3D atmospheric data (6×16×16×8)
 │   └── cloud_mesh_generator.gd                # marching cubes mesh from cloud density field
 │
@@ -597,10 +606,12 @@ Adjacent biomes make geographic sense (no desert next to tundra).
   - Storm winds: 3× erosion rate
   - Rain: 0.5× (wet soil resists)
 
-- [ ] **4b.4** Periodic biome reassignment
-  - Every N game-days, re-run biome assignment on tiles where terrain changed significantly
-  - Track `height_at_last_biome_check` per tile, only reassign if delta > threshold
-  - Smooth transitions: biome changes interpolate vertex colors over time
+- [x] **4b.4** Periodic biome reassignment
+  - `systems/biome/sys_biome_reassign.gd` — every 20s, scans all tiles for height delta > 0.008
+  - Tracks `_last_heights` snapshot, only reassigns tiles where terrain actually changed
+  - Uses `GenBiomeAssignment._classify_multinoise()` for consistent biome selection
+  - Updates both `biome_map` and `grid.set_biome()` for changed tiles
+  - Mesh receives updated `biome_map` on every periodic rebuild
 
 ### Verification
 ```
@@ -1170,6 +1181,168 @@ Add wolves back → equilibrium restores.
 Seasonal migration visible: animals move between biomes in autumn.
 Fish swim in ocean tiles.
 10 game years: all species still present, populations stable within bounds.
+```
+
+---
+
+## Phase 9b: Fauna Utility AI & Performance Optimization
+
+**Goal**: Replace simple state machine with utility-based AI. Fix FPS degradation from O(N²) scans.
+
+### Tasks
+
+- [x] **9b.1** `com_energy.gd` — new component: current, max, drain_rate, rest_rate
+- [x] **9b.2** Rewrite `sys_fauna_ai.gd` to utility-based AI
+  - Each tick scores 6 competing needs: forage, hunt, sleep, flee, mate, wander
+  - Highest utility wins state selection
+  - Hunger urgency → forage (herbivore) or hunt (carnivore)
+  - Energy urgency + night → sleep
+  - Threat proximity → flee (prey only, via spatial hash)
+  - Maturity + fed + rested → mate
+  - Baseline 0.3 → wander
+- [x] **9b.3** Directed movement behaviors
+  - `_move_toward_food()`: evaluates 8 neighbor tiles by biome fertility + tree_density
+  - `_move_away_from_threat()`: flee vector = sum of inverse-distance from nearby predators
+  - `_try_move()`: shared movement with terrain/water validation
+- [x] **9b.4** Spatial hash grid for O(1) neighbor lookup
+  - 16×16 tile cells, key = `cy * 1000 + cx`
+  - `_rebuild_spatial_predators()`: built once per AI tick
+  - `_sense_threat_spatial()`: checks 3×3 cells instead of all entities
+- [x] **9b.5** Staggered batch processing
+  - `SysFaunaAi`: 40 entities/tick round-robin, 1.0s interval
+  - `SysPredatorPrey`: 20 predators/tick, 2.0s interval, spatial prey hash
+  - `SysHerd`: 2.0s interval, cap 8 members per boids calculation
+  - `SysReproduction`: 5.0s interval, species caps lowered (12-40)
+- [x] **9b.6** Fix startup delay: animals spawn in WANDERING/FORAGING with staggered timers
+- [x] **9b.7** Add ComEnergy to spawned fauna (gen_fauna.gd + sys_reproduction.gd)
+
+### Verification
+```
+Animals active immediately on load (no 3s freeze).
+FPS stable over time as population grows.
+Herbivores seek fertile tiles. Predators hunt via spatial lookup.
+Prey flees directionally away from predators.
+Animals sleep at night or when energy depleted.
+```
+
+---
+
+## Phase 9c: River & Canyon Formation
+
+**Goal**: Visible river channels carved into terrain, flowing from mountains to sea, with canyon formation.
+
+### Tasks
+
+- [x] **9c.1** Rewrite `sys_river_formation.gd`
+  - 8-neighbor flow direction (was 4)
+  - Moisture-weighted flow accumulation: `1.0 + moisture` per tile
+  - Flow threshold lowered: 8.0 (was 15.0) for more tributaries
+  - Multi-pass carving: 3 passes at startup
+  - Flow-scaled carve rates: `BASE_CARVE_RATE=0.015 × flow/30` (was flat 0.005)
+  - Canyon carve rate: `0.04 × flow/60` for flow > 40
+  - `_widen_canyon()`: neighbors carved at 30% depth for valley formation
+- [x] **9c.2** Execution order fix in `main.gd`
+  - River system created during `_generate_terrain()`, after erosion prebake
+  - Canyons carved BEFORE biome assignment → affects biome classification
+  - `river_map` fed to mesh on first build
+  - `time_system` wired later in `_register_systems()`
+- [x] **9c.3** River color gradient in `planet_mesh.gd`
+  - Shallow streams: `Color(0.2, 0.35, 0.55)`
+  - Deep rivers: `Color(0.08, 0.15, 0.45)`
+  - Lerp by `river_strength` for natural variation
+- [x] **9c.4** `biome_map` promoted to class variable in `main.gd` for system access
+
+### Verification
+```
+Blue river channels visible from orbit, flowing mountain→sea.
+Wider/deeper canyons where flow accumulates.
+River valleys affect biome assignment (riparian zones).
+Console: "Initial river carving: 3 passes, N river tiles, M lakes"
+```
+
+---
+
+## Phase 9d: Micro-Biome System
+
+**Goal**: Add sub-biome variation based on local terrain features for visual and gameplay diversity.
+
+### Tasks
+
+- [x] **9d.1** `data/def_micro_biomes.gd` — 14 micro-biome types with color tints and gameplay modifiers
+- [x] **9d.2** `systems/biome/sys_micro_biome.gd` — classification based on slope, aspect, curvature, river proximity, neighbor biomes
+- [x] **9d.3** Integration: `micro_biome_map` fed to `PlanetMesh`, color tinting via `_apply_micro_tint()`
+- [x] **9d.4** Reassignment every 30 seconds
+
+---
+
+## Phase 9e: Weather Visuals Fix
+
+**Goal**: Make rain, lightning, and fog actually visible in-game.
+
+### Tasks
+
+- [x] **9e.1** Rain fix: particle size 0.06×0.4 (was 0.03×0.25), closer offsets (3 units, was 8), 300 particles, no_depth_test, height 3.5
+- [x] **9e.2** Lightning bolt: `ImmediateMesh` triangle strip with 8 jagged segments, emissive glow (energy=8.0), 0.2s visible, random horizontal offset, triggered from `SysWeatherVisuals`
+- [x] **9e.3** Fog fix: 3 emitters (was 1), 6.0×3.5 quads (was 4.0×2.5), alpha 0.25 (was 0.12), shows during RAIN+STORM+FOG (was FOG only)
+
+---
+
+## Phase 9f: Water Dynamics System
+
+**Goal**: Replace static water sphere with a full fluid dynamics system. Water flows downhill from mountains, ocean has temperature-driven currents and wind-driven waves, weather affects water levels.
+
+### Architecture
+
+**Data Layer** — `planet/water_grid.gd`:
+- Per-tile: `water_depth`, `flow_vx/vy`, `water_temp`, `wave_height`, `surface_height`
+- Initialized from terrain: tiles below SEA_LEVEL get depth = SEA_LEVEL - terrain_h
+- Temperature seeded from global temperature_map
+
+**Simulation** — `systems/water/sys_water_dynamics.gd`:
+- Chunked processing: 2048 tiles every 0.5s (full grid in ~8 ticks = 4s)
+- **Shallow water flow**: height gradient → flow velocity → water transfer to downhill neighbors
+- **Weather**: rain adds depth (0.0003/tick normal, 0.001 storm), evaporation drains (temp-scaled)
+- **River injection**: river tiles continuously feed water at rate proportional to river_strength
+- **Wind currents**: deep water (>0.05) gets wind_dir × wind_speed push
+- **Coriolis deflection**: latitude-dependent perpendicular force on flow
+- **Ocean currents** (every 3s, 512 random tiles):
+  - Thermohaline: warm equatorial water flows poleward, cold polar water flows equatorward
+  - Temperature diffusion between neighboring water tiles
+  - Latitude-based temperature tendency (equator warm, poles cold)
+- **Waves**: storm boosts wave_height, exponential decay (0.85/tick)
+
+**Rendering** — `planet/planet_water_mesh.gd`:
+- Cube-sphere mesh (6 faces × 64×64) matching terrain mesh topology
+- Per-vertex: position from water surface_height, color from depth+temperature, UV from flow velocity
+- Rebuilds every 2.0s (performance-gated)
+- Depth coloring: shallow=Color(0.15,0.35,0.55) → deep=Color(0.02,0.08,0.35)
+- Temperature tint: warm=greenish/turquoise, cold=deep blue
+- Zero-depth tiles get alpha=0 (transparent over land)
+
+**Shader** — `shaders/water.gdshader`:
+- Multi-octave wave displacement: 3 sine/cosine waves with flow-modulated frequency
+- Flow distortion: wave pattern shifts with current direction
+- Caustic animation from flow magnitude
+- Fresnel edge transparency
+- Specular highlights (Schlick GGX)
+
+### Tasks
+
+- [x] **9f.1** `planet/water_grid.gd` — per-tile water data structure
+- [x] **9f.2** `systems/water/sys_water_dynamics.gd` — chunked shallow water sim + ocean currents
+- [x] **9f.3** `planet/planet_water_mesh.gd` — cube-sphere water mesh with depth/flow/temp vertex data
+- [x] **9f.4** `shaders/water.gdshader` — flow-aware waves, depth color, fresnel, specular
+- [x] **9f.5** Replace static SphereMesh in `main.gd` with dynamic water mesh + system
+
+### Verification
+```
+Water visible on ocean tiles with depth-based coloring (dark deep ocean, lighter shallow).
+Rivers feed water into downstream tiles.
+Rain visibly raises water levels. Evaporation slowly lowers them.
+Storm weather creates larger waves.
+Ocean currents: warm equatorial water flows poleward (visible as color shift over time).
+Wind pushes surface water in wind direction.
+No water visible on high terrain (alpha=0).
 ```
 
 ---
