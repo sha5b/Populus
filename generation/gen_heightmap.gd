@@ -15,7 +15,7 @@ func _init(world_seed: int = 0) -> void:
 		_seed = world_seed
 
 
-func generate(grid: TorusGrid) -> void:
+func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 	var w := grid.width
 	var h := grid.height
 	var total := w * h
@@ -41,14 +41,25 @@ func generate(grid: TorusGrid) -> void:
 	for y in range(h):
 		for x in range(w):
 			var idx := y * w + x
-			var fx := float(x)
-			var fy := float(y)
 
-			var c := (continental.get_noise_2d(fx, fy) + 1.0) * 0.5
-			var e := (erosion_noise.get_noise_2d(fx, fy) + 1.0) * 0.5
-			var pv := (pv_noise.get_noise_2d(fx, fy) + 1.0) * 0.5
-			var d := detail.get_noise_2d(fx, fy)
-			var weird := (weird_noise.get_noise_2d(fx, fy) + 1.0) * 0.5
+			var sx: float
+			var sy: float
+			var sz: float
+			if proj:
+				var wp := proj.grid_to_sphere(float(x), float(y)).normalized()
+				sx = wp.x * 50.0
+				sy = wp.y * 50.0
+				sz = wp.z * 50.0
+			else:
+				sx = float(x)
+				sy = float(y)
+				sz = 0.0
+
+			var c := (continental.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
+			var e := (erosion_noise.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
+			var pv := (pv_noise.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
+			var d := detail.get_noise_3d(sx, sy, sz)
+			var weird := (weird_noise.get_noise_3d(sx, sy, sz) + 1.0) * 0.5
 
 			continentalness_map[idx] = c
 			erosion_map[idx] = e

@@ -6,6 +6,7 @@ var wind_system: SysWind = null
 var time_system: SysTime = null
 
 var wave_erosion_rate: float = 0.002
+var coastal_max_height: float = 0.1
 
 var _game_hours_acc: float = 0.0
 var _run_interval_hours: float = 12.0
@@ -38,7 +39,7 @@ func _run_batch() -> void:
 	for y in range(h):
 		for x in range(w):
 			var center_h := grid.get_height(x, y)
-			if center_h <= GameConfig.SEA_LEVEL or center_h > 0.1:
+			if center_h <= GameConfig.SEA_LEVEL or center_h > coastal_max_height:
 				continue
 
 			var is_coastal := false

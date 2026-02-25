@@ -1,7 +1,7 @@
 extends Node3D
 class_name PlanetCloudLayer
 
-const MAX_REBUILDS_PER_FRAME := 4
+const MAX_REBUILDS_PER_FRAME := 12
 
 var _projector: PlanetProjector
 var _atmo_grid: AtmosphereGrid
@@ -31,24 +31,18 @@ func setup(proj: PlanetProjector, atmo: AtmosphereGrid) -> void:
 
 
 func update_clouds(_delta: float, _wind_dir: Vector2, _wind_speed: float) -> void:
+	update_clouds_rolling(_delta)
+
+
+func update_clouds_rolling(_delta: float) -> void:
 	if _atmo_grid == null:
 		return
 
 	var total := AtmosphereGrid.TOTAL_CHUNKS
-	var rebuilt := 0
-	for _i in range(total):
-		if rebuilt >= MAX_REBUILDS_PER_FRAME:
-			break
-
+	for _i in range(MAX_REBUILDS_PER_FRAME):
 		var ci := _rebuild_index
 		_rebuild_index = (_rebuild_index + 1) % total
-
-		if not _atmo_grid.is_chunk_dirty_by_idx(ci):
-			continue
-
 		_rebuild_chunk_by_idx(ci)
-		_atmo_grid.clear_chunk_dirty_by_idx(ci)
-		rebuilt += 1
 
 
 func _rebuild_chunk_by_idx(ci: int) -> void:

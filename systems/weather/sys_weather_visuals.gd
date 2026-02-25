@@ -8,6 +8,7 @@ var time_system: SysTime = null
 var cloud_layer: PlanetCloudLayer = null
 var atmosphere_shell: PlanetAtmosphere = null
 var planet_rain: PlanetRain = null
+var atmo_grid: AtmosphereGrid = null
 var sun_light: DirectionalLight3D = null
 
 var _lightning_timer: float = 0.0
@@ -48,7 +49,10 @@ func _update_clouds(delta: float, state: int) -> void:
 		wind_dir = wind_system.direction
 		wind_speed = wind_system.speed
 
-	cloud_layer.update_clouds(delta, wind_dir, wind_speed)
+	if atmo_grid:
+		atmo_grid.advance_wind(delta, wind_dir, wind_speed)
+
+	cloud_layer.update_clouds_rolling(delta)
 
 
 func _update_rain(state: int) -> void:

@@ -143,12 +143,7 @@ func _add_cloud_and_atmosphere() -> void:
 	cloud_layer_node.setup(projector, atmo_grid)
 	add_child(cloud_layer_node)
 
-	atmosphere_node = PlanetAtmosphere.new()
-	atmosphere_node.name = "PlanetAtmosphere"
-	atmosphere_node.setup(GameConfig.PLANET_RADIUS)
-	add_child(atmosphere_node)
-
-	print("Cloud layer and atmosphere added (volumetric).")
+	print("Cloud layer added (volumetric).")
 
 
 func _add_rain_snow_particles() -> void:
@@ -166,6 +161,8 @@ func _add_camera_and_light() -> void:
 	camera.orbit_min = GameConfig.PLANET_RADIUS * 1.1
 	camera.orbit_max = GameConfig.PLANET_RADIUS * 10.0
 	camera.far = GameConfig.PLANET_RADIUS * 20.0
+	camera.projector = projector
+	camera.grid = grid
 	camera.current = true
 	add_child(camera)
 
@@ -192,7 +189,7 @@ func _add_camera_and_light() -> void:
 
 func _generate_terrain() -> void:
 	var heightmap_gen := GenHeightmap.new(GameConfig.WORLD_SEED)
-	heightmap_gen.generate(grid)
+	heightmap_gen.generate(grid, projector)
 
 	var w := grid.width
 	var h := grid.height
@@ -206,7 +203,7 @@ func _generate_terrain() -> void:
 	biome_map_data.resize(total)
 
 	var biome_gen := GenBiome.new(GameConfig.WORLD_SEED)
-	biome_gen.generate(grid, temperature_map, moisture_map)
+	biome_gen.generate(grid, temperature_map, moisture_map, projector)
 
 	base_temperature_map = temperature_map.duplicate()
 	base_moisture_map = moisture_map.duplicate()
@@ -278,6 +275,7 @@ func _register_systems() -> void:
 	weather_visuals.cloud_layer = cloud_layer_node
 	weather_visuals.atmosphere_shell = atmosphere_node
 	weather_visuals.planet_rain = rain_system
+	weather_visuals.atmo_grid = atmo_grid
 	weather_visuals.sun_light = get_node("SunLight") as DirectionalLight3D
 	world.add_system(weather_visuals)
 

@@ -1,6 +1,6 @@
 class_name CloudMeshGenerator
 
-const DENSITY_THRESHOLD := 0.3
+const DENSITY_THRESHOLD := 0.15
 
 static var _edge_table: PackedInt32Array
 static var _tri_table: Array[PackedInt32Array]
@@ -117,23 +117,33 @@ static func _march_cube(
 		var v1 := edge_verts[tri_list[i + 1]]
 		var v2 := edge_verts[tri_list[i + 2]]
 
-		var face_normal := (v1 - v0).cross(v2 - v0).normalized()
-		if face_normal.length_squared() < 0.001:
-			face_normal = v0.normalized()
+		var n0 := v0.normalized()
+		var n1 := v1.normalized()
+		var n2 := v2.normalized()
 
-		verts.append(v0)
-		verts.append(v1)
-		verts.append(v2)
-		norms.append(face_normal)
-		norms.append(face_normal)
-		norms.append(face_normal)
+		var winding := (v1 - v0).cross(v2 - v0)
+		if winding.dot(n0) < 0.0:
+			verts.append(v0)
+			verts.append(v2)
+			verts.append(v1)
+			norms.append(n0)
+			norms.append(n2)
+			norms.append(n1)
+		else:
+			verts.append(v0)
+			verts.append(v1)
+			verts.append(v2)
+			norms.append(n0)
+			norms.append(n1)
+			norms.append(n2)
 
 		var avg_density := (corners[0] + corners[1] + corners[2] + corners[3] + corners[4] + corners[5] + corners[6] + corners[7]) / 8.0
-		var up_dot := face_normal.dot(v0.normalized())
-		var brightness := 0.6 + up_dot * 0.4
-		brightness = clampf(brightness, 0.4, 1.0)
-		var grey := lerpf(0.85, 0.5, avg_density)
-		var c := Color(grey * brightness, grey * brightness, grey * brightness * 1.05, 0.7)
+		var up_dot := n0.dot(n0)
+		var brightness := 0.7 + absf(winding.normalized().dot(n0)) * 0.3
+		brightness = clampf(brightness, 0.5, 1.0)
+		var grey := lerpf(0.9, 0.55, avg_density)
+		var density_alpha := clampf((avg_density - DENSITY_THRESHOLD) / (1.0 - DENSITY_THRESHOLD), 0.1, 0.85)
+		var c := Color(grey * brightness, grey * brightness, grey * brightness * 1.05, density_alpha)
 		cols.append(c)
 		cols.append(c)
 		cols.append(c)
