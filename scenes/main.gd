@@ -3,6 +3,8 @@ extends Node3D
 const SysDiurnalTemperatureScript = preload("res://systems/time/sys_diurnal_temperature.gd")
 const SysWaterSweScript = preload("res://systems/water/sys_water_swe.gd")
 const SysVolcanismScript = preload("res://systems/erosion/sys_volcanism.gd")
+const SysClimateScript = preload("res://systems/weather/sys_climate.gd")
+const PlanetGeneratorScript = preload("res://generation/planet_generator.gd")
 
 var world: EcsWorld
 var grid: TorusGrid
@@ -303,13 +305,6 @@ func _add_camera_and_light() -> void:
 
 
 func _generate_terrain_step1_heightmap() -> void:
-	heightmap_gen = GenHeightmap.new(GameConfig.WORLD_SEED)
-	heightmap_gen.generate(grid, projector)
-
-	_continentalness_map = heightmap_gen.continentalness_map
-	_erosion_noise_map = heightmap_gen.erosion_map
-	_weirdness_map = heightmap_gen.weirdness_map
-
 	var total := grid.width * grid.height
 	temperature_map = PackedFloat32Array()
 	temperature_map.resize(total)
@@ -318,70 +313,57 @@ func _generate_terrain_step1_heightmap() -> void:
 	biome_map = PackedInt32Array()
 	biome_map.resize(total)
 
-	var biome_gen := GenBiome.new(GameConfig.WORLD_SEED)
-	biome_gen.generate(grid, temperature_map, moisture_map, projector)
-	print("Heightmap + climate generated.")
+	heightmap_gen = PlanetGeneratorScript.generate_terrain_step1_heightmap(
+		grid, projector, temperature_map, moisture_map, biome_map
+	)
+
+	_continentalness_map = heightmap_gen.continentalness_map
+	_erosion_noise_map = heightmap_gen.erosion_map
+	_weirdness_map = heightmap_gen.weirdness_map
 
 
 func _generate_terrain_step2_erosion() -> void:
-	_prebake_erosion(moisture_map)
-	print("Erosion prebake complete.")
+	PlanetGeneratorScript.generate_terrain_step2_erosion(grid, moisture_map)
 
 
 func _generate_terrain_step3_rivers() -> void:
-	river_system = SysRiverFormation.new()
-	river_system.setup(grid, null, moisture_map)
-	print("River carving complete.")
+	river_system = PlanetGeneratorScript.generate_terrain_step3_rivers(grid, moisture_map)
 
 
 func _generate_terrain_step4_biomes() -> void:
-	var w := grid.width
-	var h := grid.height
-
 	base_temperature_map = temperature_map.duplicate()
 	base_moisture_map = moisture_map.duplicate()
 
-	GenBiomeAssignment.assign(
+	PlanetGeneratorScript.generate_terrain_step4_biomes(
 		grid, temperature_map, moisture_map, biome_map,
 		_continentalness_map, _erosion_noise_map, _weirdness_map
 	)
 
-	for y in range(h):
-		for x in range(w):
-			grid.set_biome(x, y, biome_map[y * w + x])
-
 	planet_mesh.set_biome_map(biome_map)
 	planet_mesh.set_river_map(river_system.river_map)
-	print("Biomes assigned.")
 
 
 func _generate_terrain_step5_flora_fauna() -> void:
-	var flora_count := GenFlora.generate(world, grid, biome_map, projector)
-	print("Flora generated: %d plants." % flora_count)
+	PlanetGeneratorScript.generate_terrain_step5_flora_fauna(world, grid, projector, biome_map)
 
 	flora_renderer = PlanetFloraRenderer.new()
 	flora_renderer.name = "FloraRenderer"
 	flora_renderer.setup(projector, grid, world)
 	add_child(flora_renderer)
 
-	var fauna_gen := GenFauna.new()
-	fauna_gen.generate(world, grid, projector, biome_map)
-
 	fauna_renderer = PlanetFaunaRenderer.new()
 	fauna_renderer.name = "FaunaRenderer"
 	fauna_renderer.setup(projector, grid, world)
 	add_child(fauna_renderer)
-	print("Fauna generated.")
+
 
 func _generate_terrain_step6_tribes() -> void:
-	GenSettlement.generate(world, grid, projector)
-	print("Tribes generated.")
+	PlanetGeneratorScript.generate_terrain_step6_tribes(world, grid, projector)
 
 	tribe_renderer = PlanetTribeRenderer.new()
 	tribe_renderer.name = "TribeRenderer"
 	tribe_renderer.setup(projector, grid, world)
 	add_child(tribe_renderer)
-
 
 
 func _register_systems() -> void:
@@ -391,7 +373,7 @@ func _register_systems() -> void:
 	time_system.sun_light = sun
 	world.add_system(time_system)
 	
-	var sys_climate = SysClimate.new()
+	var sys_climate = SysClimateScript.new()
 	sys_climate.setup(grid, projector, base_temperature_map, base_moisture_map, GameConfig.WORLD_SEED)
 	world.add_system(sys_climate)
 
