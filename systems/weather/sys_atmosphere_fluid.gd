@@ -27,9 +27,19 @@ const WIND_DAMPING := GameConfig.ATMOS_WIND_DAMPING
 
 const MOISTURE_INJECT := GameConfig.ATMOS_MOISTURE_INJECT
 
+var _is_simulating: bool = false
+var _thread_task_id: int = -1
 
 func update(_world: Node, delta: float) -> void:
 	if atmo_grid == null:
+		return
+
+	if _is_simulating:
+		if _thread_task_id != -1 and WorkerThreadPool.is_task_completed(_thread_task_id):
+			WorkerThreadPool.wait_for_task_completion(_thread_task_id)
+			_thread_task_id = -1
+			_is_simulating = false
+			_apply_sim_results()
 		return
 
 	_sim_accumulator += delta
@@ -40,10 +50,14 @@ func update(_world: Node, delta: float) -> void:
 	if not _initialized:
 		_init_buffers()
 
-	_old_density.resize(AtmosphereGrid.TOTAL_CELLS)
 	for i in range(AtmosphereGrid.TOTAL_CELLS):
 		_old_density[i] = atmo_grid.cloud_density[i]
 
+	_is_simulating = true
+	_thread_task_id = WorkerThreadPool.add_task(_run_sim_thread.bind(), true, "AtmosFluidSim")
+
+
+func _run_sim_thread() -> void:
 	_resample_surface_climate()
 	_inject_surface_moisture()
 	_apply_global_wind()
@@ -52,6 +66,13 @@ func update(_world: Node, delta: float) -> void:
 	_buoyancy_step()
 	_condensation_step()
 	_precipitation_step()
+
+
+func _apply_sim_results() -> void:
+	for i in range(AtmosphereGrid.TOTAL_CELLS):
+		atmo_grid.moisture[i] = _adv_moisture[i]
+		atmo_grid.temperature[i] = _adv_temp[i]
+
 	_damp_winds()
 
 	_mark_changed_chunks()
