@@ -11,12 +11,12 @@ var weirdness_map: PackedFloat32Array
 
 var _last_heights: PackedFloat32Array
 var _timer: float = 0.0
-var _chunk_offset: int = 0
 
 const TICK_INTERVAL := 2.0
-const CHUNK_SIZE := 4096
 const HEIGHT_DELTA_THRESHOLD := 0.008
 
+var _is_updating: bool = false
+var _thread_task_id: int = -1
 
 func setup(
 	g: TorusGrid,
@@ -47,29 +47,37 @@ func _snapshot_heights() -> void:
 
 
 func update(_world: Node, delta: float) -> void:
+	if _is_updating:
+		if _thread_task_id != -1 and WorkerThreadPool.is_task_completed(_thread_task_id):
+			WorkerThreadPool.wait_for_task_completion(_thread_task_id)
+			_thread_task_id = -1
+			_is_updating = false
+			grid.is_dirty = true
+		return
+
 	_timer += delta
 	if _timer < TICK_INTERVAL:
 		return
 	_timer -= TICK_INTERVAL
-	_reassign_chunk(_world)
-
-
-func _reassign_chunk(world: Node) -> void:
-	var w := grid.width
-	var total := w * grid.height
-	var has_noise := continentalness_map.size() == total
-	var start := _chunk_offset
-	var end_idx: int = mini(start + CHUNK_SIZE, total)
-	var tiles_changed := 0
 
 	var season_offset := 0.0
-	if world is EcsWorld:
-		for s in world.systems:
+	if _world is EcsWorld:
+		for s in (_world as EcsWorld).systems:
 			if s is SysTime:
 				season_offset = SysSeason.SEASON_TEMP_OFFSET.get(s.season, 0.0)
 				break
 
-	for i in range(start, end_idx):
+	_is_updating = true
+	_thread_task_id = WorkerThreadPool.add_task(_reassign_thread.bind(season_offset), true, "BiomeReassign")
+
+
+func _reassign_thread(season_offset: float) -> void:
+	var w := grid.width
+	var total := w * grid.height
+	var has_noise := continentalness_map.size() == total
+	var tiles_changed := 0
+
+	for i in range(total):
 		var x := i % w
 		var y := int(float(i) / float(w))
 		var current_h := grid.get_height(x, y)
@@ -91,7 +99,5 @@ func _reassign_chunk(world: Node) -> void:
 			grid.set_biome(x, y, new_biome)
 			tiles_changed += 1
 
-	_chunk_offset = end_idx if end_idx < total else 0
-
 	if tiles_changed > 0:
-		print("Biome reassignment chunk: %d tiles changed" % tiles_changed)
+		print("Biome reassignment full pass: %d tiles changed" % tiles_changed)

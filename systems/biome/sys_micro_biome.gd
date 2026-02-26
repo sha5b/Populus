@@ -10,9 +10,11 @@ var river_map: PackedFloat32Array
 var micro_biome_map: PackedInt32Array
 
 var _reassign_timer: float = 0.0
-var _chunk_offset: int = 0
 const TICK_INTERVAL := 3.0
 const CHUNK_SIZE := 4096
+
+var _is_updating: bool = false
+var _thread_task_id: int = -1
 
 # Spatial coherence noise — modulates thresholds so nearby tiles agree
 var _coherence_noise: FastNoiseLite
@@ -50,32 +52,36 @@ func setup(
 
 	_precompute_smooth_terrain()
 	assign_all()
-	_majority_filter()
 
 
 func update(_world: Node, delta: float) -> void:
+	if _is_updating:
+		if _thread_task_id != -1 and WorkerThreadPool.is_task_completed(_thread_task_id):
+			WorkerThreadPool.wait_for_task_completion(_thread_task_id)
+			_thread_task_id = -1
+			_is_updating = false
+			grid.is_dirty = true
+		return
+
 	_reassign_timer += delta
 	if _reassign_timer < TICK_INTERVAL:
 		return
 	_reassign_timer -= TICK_INTERVAL
-	_assign_chunk()
+	
+	_is_updating = true
+	_thread_task_id = WorkerThreadPool.add_task(_assign_thread.bind(), true, "MicroBiomeReassign")
 
 
-func _assign_chunk() -> void:
+func _assign_thread() -> void:
+	_precompute_smooth_terrain()
 	var w := grid.width
 	var total := w * grid.height
-	var end_idx := mini(_chunk_offset + CHUNK_SIZE, total)
-	var to_process = end_idx - _chunk_offset
-	for i in range(to_process):
-		var idx := _chunk_offset + i
-		var x := idx % w
+	for i in range(total):
+		var x := i % w
 		@warning_ignore("integer_division")
-		var y := idx / w
-		micro_biome_map[idx] = _classify_tile(x, y)
-	# Run majority filter on the chunk region to smooth edges
-	if end_idx >= total:
-		_majority_filter()
-	_chunk_offset = end_idx if end_idx < total else 0
+		var y := i / w
+		micro_biome_map[i] = _classify_tile(x, y)
+	_majority_filter()
 
 
 func assign_all() -> void:
