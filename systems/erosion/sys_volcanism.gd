@@ -124,9 +124,9 @@ func _apply_eruption(cx: int, cy: int, strength: float) -> void:
 			var idx := y * w + x
 
 			var uplift := GameConfig.VOLC_ERUPT_UPLIFT * (0.35 + strength) * falloff
-			var current_h := grid.get_height(x, y)
+			var current_h := grid.get_bedrock(x, y)
 			var new_h := minf(current_h + uplift, GameConfig.VOLC_MAX_TERRAIN_H)
-			grid.set_height(x, y, new_h)
+			grid.set_bedrock(x, y, new_h)
 
 			if idx >= 0 and idx < temperature_map.size():
 				temperature_map[idx] = clampf(temperature_map[idx] + GameConfig.VOLC_TEMP_BOOST * falloff, 0.0, 1.0)

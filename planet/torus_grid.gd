@@ -2,16 +2,23 @@ class_name TorusGrid
 
 var width: int
 var height: int
-var heights: PackedFloat32Array
+var bedrock_height: PackedFloat32Array
+var sediment_depth: PackedFloat32Array
 var biomes: PackedInt32Array
 
 
 func _init(w: int = 128, h: int = 128) -> void:
 	width = w
 	height = h
-	heights = PackedFloat32Array()
-	heights.resize(width * height)
-	heights.fill(0.0)
+	
+	bedrock_height = PackedFloat32Array()
+	bedrock_height.resize(width * height)
+	bedrock_height.fill(0.0)
+	
+	sediment_depth = PackedFloat32Array()
+	sediment_depth.resize(width * height)
+	sediment_depth.fill(0.0)
+	
 	biomes = PackedInt32Array()
 	biomes.resize(width * height)
 	biomes.fill(0)
@@ -29,12 +36,32 @@ func _index(x: int, y: int) -> int:
 	return wrap_y(y) * width + wrap_x(x)
 
 
+func get_bedrock(x: int, y: int) -> float:
+	return bedrock_height[_index(x, y)]
+
+
+func set_bedrock(x: int, y: int, h: float) -> void:
+	bedrock_height[_index(x, y)] = h
+
+
+func get_sediment(x: int, y: int) -> float:
+	return sediment_depth[_index(x, y)]
+
+
+func set_sediment(x: int, y: int, d: float) -> void:
+	sediment_depth[_index(x, y)] = d
+
+
 func get_height(x: int, y: int) -> float:
-	return heights[_index(x, y)]
+	var idx := _index(x, y)
+	return bedrock_height[idx] + sediment_depth[idx]
 
 
 func set_height(x: int, y: int, h: float) -> void:
-	heights[_index(x, y)] = h
+	# Default fallback for simple operations: put it all in bedrock
+	var idx := _index(x, y)
+	bedrock_height[idx] = h
+	sediment_depth[idx] = 0.0
 
 
 func get_biome(x: int, y: int) -> int:

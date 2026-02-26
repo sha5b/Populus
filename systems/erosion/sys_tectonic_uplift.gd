@@ -41,7 +41,7 @@ func _uplift_chunk() -> void:
 	for i in range(_chunk_offset, end_idx):
 		var x := i % w
 		var y := int(i / w)
-		var current_h := grid.get_height(x, y)
+		var current_h := grid.get_bedrock(x, y)
 
 		var dir: Vector3
 		if projector:
@@ -79,6 +79,6 @@ func _uplift_chunk() -> void:
 		if current_h < -0.1 and boundary_factor < 0.1:
 			uplift -= SUBSIDENCE_RATE * 0.5
 
-		grid.set_height(x, y, current_h + uplift)
+		grid.set_bedrock(x, y, current_h + uplift)
 
 	_chunk_offset = end_idx if end_idx < total else 0

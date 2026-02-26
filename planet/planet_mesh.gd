@@ -167,6 +167,7 @@ func _color_at_tile(tx: int, ty: int) -> Color:
 	var gy := clampi(ty, 0, grid.height - 1)
 	var idx := gy * w + gx
 	var height := grid.get_height(gx, gy)
+	var sediment_depth := grid.get_sediment(gx, gy)
 
 	# Rivers: water color with depth
 	if river_map.size() > idx and idx >= 0:
@@ -181,6 +182,12 @@ func _color_at_tile(tx: int, ty: int) -> Color:
 
 	# Biome edge blending: smooth transitions at boundaries
 	col = _blend_biome_edges(col, gx, gy, idx)
+
+	# Bedrock exposure tint
+	if sediment_depth < 0.05 and height > GameConfig.SEA_LEVEL:
+		var exposure := clampf(1.0 - (sediment_depth / 0.05), 0.0, 1.0)
+		var bedrock_col := Color(0.35, 0.35, 0.38) # Grey rocky color
+		col = col.lerp(bedrock_col, exposure * 0.7)
 
 	# Shore gradient: tiles just above sea level get wet sand tint
 	var sea := GameConfig.SEA_LEVEL

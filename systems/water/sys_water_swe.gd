@@ -429,7 +429,7 @@ func _resample_watergrid_chunk() -> void:
 		water.flow_vx[i] = vx
 		water.flow_vy[i] = vy
 
-		var terrain_h = grid.heights[i]
+		var terrain_h = grid.get_height(x, y)
 		if terrain_h <= GameConfig.SEA_LEVEL:
 			river_map[i] = 0.0
 		else:

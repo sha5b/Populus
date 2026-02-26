@@ -59,12 +59,18 @@ func _erode_patch(px: int, py: int, size: int) -> void:
 			var dryness := 1.0 - moisture_map[idx] / moisture_threshold
 			var pickup := wind_erosion_rate * wind_spd * dryness
 
-			grid.set_height(x, y, center_h - pickup)
+			var sed_here := grid.get_sediment(x, y)
+			if sed_here < pickup:
+				var bedrock_erode := (pickup - sed_here) * 0.1 # Wind erodes bedrock extremely slowly
+				grid.set_bedrock(x, y, grid.get_bedrock(x, y) - bedrock_erode)
+				grid.set_sediment(x, y, 0.0)
+				pickup = sed_here + bedrock_erode
+			else:
+				grid.set_sediment(x, y, sed_here - pickup)
 
 			var deposit_x := grid.wrap_x(x + int(round(wind_dir.x)))
 			var deposit_y := grid.wrap_y(y + int(round(wind_dir.y)))
-			var deposit_h := grid.get_height(deposit_x, deposit_y)
-			grid.set_height(deposit_x, deposit_y, deposit_h + pickup * 0.8)
+			grid.set_sediment(deposit_x, deposit_y, grid.get_sediment(deposit_x, deposit_y) + pickup * 0.8)
 
 
 func run_full_pass() -> void:

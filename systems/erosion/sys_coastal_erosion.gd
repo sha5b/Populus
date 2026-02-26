@@ -50,7 +50,15 @@ func _erode_patch(px: int, py: int, size: int) -> void:
 				continue
 
 			var erosion := wave_erosion_rate * wind_speed
-			grid.set_height(x, y, center_h - erosion)
+			
+			var sed_here := grid.get_sediment(x, y)
+			if sed_here < erosion:
+				var bedrock_erode := (erosion - sed_here) * 0.3 # Coastal waves break bedrock decently
+				grid.set_bedrock(x, y, grid.get_bedrock(x, y) - bedrock_erode)
+				grid.set_sediment(x, y, 0.0)
+				erosion = sed_here + bedrock_erode
+			else:
+				grid.set_sediment(x, y, sed_here - erosion)
 
 			var deepest_neighbor := Vector2i(-1, -1)
 			var deepest_h := 999.0
@@ -61,7 +69,7 @@ func _erode_patch(px: int, py: int, size: int) -> void:
 					deepest_neighbor = neighbor
 
 			if deepest_neighbor.x >= 0 and deepest_h < GameConfig.SEA_LEVEL:
-				grid.set_height(deepest_neighbor.x, deepest_neighbor.y, deepest_h + erosion * 0.5)
+				grid.set_sediment(deepest_neighbor.x, deepest_neighbor.y, grid.get_sediment(deepest_neighbor.x, deepest_neighbor.y) + erosion * 0.5)
 
 
 func run_full_pass() -> void:

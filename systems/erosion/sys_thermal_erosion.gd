@@ -52,8 +52,17 @@ func _erode_patch(px: int, py: int, size: int) -> void:
 
 				if diff > talus_angle:
 					var transfer := (diff - talus_angle) * thermal_rate
-					grid.set_height(x, y, grid.get_height(x, y) - transfer)
-					grid.set_height(nx, ny, grid.get_height(nx, ny) + transfer)
+					
+					var sed_here := grid.get_sediment(x, y)
+					if sed_here < transfer:
+						var bedrock_erode := (transfer - sed_here) * 0.5 # Bedrock crumbles into sediment slowly
+						grid.set_bedrock(x, y, grid.get_bedrock(x, y) - bedrock_erode)
+						grid.set_sediment(x, y, 0.0)
+						transfer = sed_here + bedrock_erode
+					else:
+						grid.set_sediment(x, y, sed_here - transfer)
+
+					grid.set_sediment(nx, ny, grid.get_sediment(nx, ny) + transfer)
 					_transfers += 1
 
 

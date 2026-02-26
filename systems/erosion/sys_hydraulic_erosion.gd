@@ -79,9 +79,20 @@ func _trace_particle(x: float, y: float) -> float:
 			total_moved += sediment * 0.8
 			break
 
-		grid.set_height(ix, iy, height_here + deposit - erode)
-		sediment += erode - deposit
-		total_moved += absf(erode - deposit)
+		# Prioritize eroding sediment, then bedrock
+		var actual_erode := erode
+		var sed_here := grid.get_sediment(ix, iy)
+		if sed_here < erode:
+			var bedrock_erode := (erode - sed_here) * 0.2 # Bedrock erodes much slower than sediment
+			grid.set_bedrock(ix, iy, grid.get_bedrock(ix, iy) - bedrock_erode)
+			grid.set_sediment(ix, iy, 0.0)
+			actual_erode = sed_here + bedrock_erode
+		else:
+			grid.set_sediment(ix, iy, sed_here - erode)
+
+		_deposit_at(ix, iy, deposit)
+		sediment += actual_erode - deposit
+		total_moved += absf(actual_erode - deposit)
 
 		vx = friction * vx + nx * speed_factor
 		vy = friction * vy + ny * speed_factor
@@ -110,7 +121,7 @@ func _get_normal_y(ix: int, iy: int) -> float:
 func _deposit_at(ix: int, iy: int, amount: float) -> void:
 	var wx := grid.wrap_x(ix)
 	var wy := grid.wrap_y(iy)
-	grid.set_height(wx, wy, grid.get_height(wx, wy) + amount)
+	grid.set_sediment(wx, wy, grid.get_sediment(wx, wy) + amount)
 
 
 func _apply_weather_modifiers() -> void:

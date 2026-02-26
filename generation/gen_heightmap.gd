@@ -158,11 +158,22 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 
 				raw += ridge_h + trench_h + seamount_h + stone_h
 
-			grid.set_height(x, y, raw)
+			# Initialize strata
+			# We give a base sediment layer everywhere, deeper in valleys and oceans
+			var sediment := 0.02 + clampf(1.0 - ridge, 0.0, 1.0) * 0.05
+			if raw < 0.0:
+				sediment += absf(raw) * 0.1 # More sediment in oceans
+			
+			var bedrock := raw - sediment
+
+			grid.set_bedrock(x, y, bedrock)
+			grid.set_sediment(x, y, sediment)
+			
 			min_h = minf(min_h, raw)
 			max_h = maxf(max_h, raw)
 
-	_normalize(grid, min_h, max_h)
+	# Normalize operates on bedrock since it's the structural base
+	_normalize_bedrock(grid, min_h, max_h)
 
 	var land_count := 0
 	for y in range(h):
@@ -260,31 +271,35 @@ func _erosion_spline(inv_erosion: float) -> float:
 		return lerpf(0.6, 0.9, (inv_erosion - 0.8) / 0.2)
 
 
-func _normalize(grid: TorusGrid, min_h: float, max_h: float) -> void:
-	var range_h := max_h - min_h
-	if range_h < 0.001:
+func _normalize_bedrock(grid: TorusGrid, min_h: float, max_h: float) -> void:
+	if absf(max_h - min_h) < 0.001:
 		return
-
 	var w := grid.width
 	var h := grid.height
-	var target_water := 0.45
-
-	var all_heights: Array[float] = []
-	all_heights.resize(w * h)
+	var range_h := max_h - min_h
+	
+	# Determine sea level threshold based on desired land percentage (~35%)
+	var all_h: Array[float] = []
 	for y in range(h):
 		for x in range(w):
-			var normalized := (grid.get_height(x, y) - min_h) / range_h
-			all_heights[y * w + x] = normalized
-
-	all_heights.sort()
-	var sea_threshold := all_heights[int(float(all_heights.size()) * target_water)]
+			all_h.append(grid.get_bedrock(x, y) + grid.get_sediment(x, y))
+	all_h.sort()
+	var sea_threshold_idx := int(float(all_h.size()) * 0.65)
+	var sea_threshold: float = (all_h[sea_threshold_idx] - min_h) / range_h
 
 	for y in range(h):
 		for x in range(w):
-			var normalized := (grid.get_height(x, y) - min_h) / range_h
-			var shifted := normalized - sea_threshold
-			if shifted < GameConfig.SEA_LEVEL:
-				var depth := GameConfig.SEA_LEVEL - shifted
+			var bedrock := grid.get_bedrock(x, y)
+			var sediment := grid.get_sediment(x, y)
+			var total_h := bedrock + sediment
+			
+			var normalized_total := (total_h - min_h) / range_h
+			var shifted_total := normalized_total - sea_threshold
+			
+			if shifted_total < GameConfig.SEA_LEVEL:
+				var depth := GameConfig.SEA_LEVEL - shifted_total
 				depth = pow(depth, GameConfig.OCEAN_DEPTH_POWER) * GameConfig.OCEAN_DEPTH_MULT
-				shifted = GameConfig.SEA_LEVEL - depth
-			grid.set_height(x, y, shifted)
+				shifted_total = GameConfig.SEA_LEVEL - depth
+				
+			# Keep sediment absolute depth, push the rest into bedrock
+			grid.set_bedrock(x, y, shifted_total - sediment)
