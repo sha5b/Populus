@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, blend_mix, depth_draw_opaque, cull_back;
+render_mode unshaded, blend_mix, depth_draw_opaque, cull_disabled;
 
 uniform vec4 fog_color : source_color = vec4(0.85, 0.85, 0.9, 0.4);
 uniform bool is_active = true;

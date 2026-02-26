@@ -86,6 +86,15 @@ func _update_rain(state: int) -> void:
 
 	var is_snow := is_cold or state == DefEnums.WeatherState.SNOW or state == DefEnums.WeatherState.BLIZZARD
 
+	if cloud_layer:
+		if is_precip:
+			var intensity := 1.0
+			if state in [DefEnums.WeatherState.STORM, DefEnums.WeatherState.HURRICANE, DefEnums.WeatherState.BLIZZARD]:
+				intensity = 1.5
+			cloud_layer.set_rain_intensity(intensity, is_snow)
+		else:
+			cloud_layer.set_rain_intensity(0.0, false)
+			
 	if is_precip:
 		planet_rain.set_raining(true, is_snow)
 		var is_intense := state in [DefEnums.WeatherState.STORM, DefEnums.WeatherState.HURRICANE, DefEnums.WeatherState.BLIZZARD]
@@ -98,6 +107,10 @@ func _update_rain(state: int) -> void:
 		DefEnums.WeatherState.STORM, DefEnums.WeatherState.BLIZZARD,
 		DefEnums.WeatherState.HURRICANE,
 	]
+	
+	if cloud_layer:
+		cloud_layer.set_fog_active(show_fog)
+		
 	planet_rain.set_fog(show_fog)
 	planet_rain.update_positions()
 
