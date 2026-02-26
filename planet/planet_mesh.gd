@@ -46,7 +46,31 @@ func set_micro_biome_map(mbm: PackedInt32Array) -> void:
 	micro_biome_map = mbm
 
 
+var _is_building: bool = false
+var _thread_task_id: int = -1
+var _pending_arrays: Array = []
+
+
 func build_mesh() -> void:
+	if _is_building:
+		return
+	_is_building = true
+	
+	# Dispatch to worker thread
+	_thread_task_id = WorkerThreadPool.add_task(_build_mesh_thread.bind(), true, "PlanetMeshBuilder")
+
+
+func _process(_delta: float) -> void:
+	if _is_building and _thread_task_id != -1:
+		if WorkerThreadPool.is_task_completed(_thread_task_id):
+			WorkerThreadPool.wait_for_task_completion(_thread_task_id)
+			_thread_task_id = -1
+			_apply_mesh_arrays(_pending_arrays)
+			_pending_arrays.clear()
+			_is_building = false
+
+
+func _build_mesh_thread() -> void:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 
@@ -99,6 +123,12 @@ func build_mesh() -> void:
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_INDEX] = indices
 
+	_pending_arrays = arrays
+
+
+func _apply_mesh_arrays(arrays: Array) -> void:
+	if arrays.is_empty():
+		return
 	var arr_mesh := ArrayMesh.new()
 	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh = arr_mesh

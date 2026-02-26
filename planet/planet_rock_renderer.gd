@@ -21,24 +21,39 @@ func setup(proj: PlanetProjector, grid: TorusGrid, ecs: EcsWorld) -> void:
 	_ecs = ecs
 
 
+var _is_rebuilding: bool = false
+
 func _process(delta: float) -> void:
+	if _is_rebuilding:
+		return
 	_rebuild_timer += delta
 	if _rebuild_timer < REBUILD_INTERVAL:
 		return
 	_rebuild_timer = 0.0
-	_rebuild_all()
+	_rebuild_all_async()
 
 
-func _rebuild_all() -> void:
+func _rebuild_all_async() -> void:
 	if _ecs == null or _projector == null:
 		return
 
+	_is_rebuilding = true
 	var by_type: Dictionary = {}
 
 	var rocks := _ecs.get_components("ComRock")
 	var positions := _ecs.get_components("ComPosition")
 
-	for eid in rocks.keys():
+	var keys := rocks.keys()
+	var start_time := Time.get_ticks_msec()
+
+	for eid in keys:
+		if Time.get_ticks_msec() - start_time > 4:
+			await get_tree().process_frame
+			start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				_is_rebuilding = false
+				return
+
 		if not positions.has(eid):
 			continue
 
@@ -56,12 +71,20 @@ func _rebuild_all() -> void:
 		})
 
 	for type_key in by_type.keys():
+		if Time.get_ticks_msec() - start_time > 4:
+			await get_tree().process_frame
+			start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				_is_rebuilding = false
+				return
 		_update_multimesh(type_key, by_type[type_key])
 
 	for type_key in _multimeshes.keys():
 		if not by_type.has(type_key):
 			var mmi: MultiMeshInstance3D = _multimeshes[type_key]
 			mmi.multimesh.instance_count = 0
+
+	_is_rebuilding = false
 
 
 func _update_multimesh(type_key: String, instances: Array) -> void:

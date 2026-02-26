@@ -16,6 +16,8 @@ const LERP_INTERVAL := 0.1
 const MAX_INSTANCES_PER_TYPE := 512
 const LERP_SPEED := 1.0
 
+var _is_rebuilding: bool = false
+
 const SPECIES_COLORS: Dictionary = {
 	"deer": Color(0.6, 0.4, 0.2),
 	"wolf": Color(0.5, 0.5, 0.5),
@@ -73,11 +75,15 @@ func _process(delta: float) -> void:
 	if _lerp_timer >= LERP_INTERVAL:
 		_advance_lerp(_lerp_timer)
 		_lerp_timer = 0.0
+		
+	if _is_rebuilding:
+		return
+		
 	_rebuild_timer += delta
 	if _rebuild_timer < REBUILD_INTERVAL:
 		return
 	_rebuild_timer = 0.0
-	_rebuild_all()
+	_rebuild_all_async()
 
 
 func _advance_lerp(delta: float) -> void:
@@ -93,17 +99,28 @@ func _advance_lerp(delta: float) -> void:
 			pos.lerp_t = minf(pos.lerp_t + delta / LERP_SPEED, 1.0)
 
 
-func _rebuild_all() -> void:
+func _rebuild_all_async() -> void:
 	if _ecs == null or _projector == null:
 		return
 
+	_is_rebuilding = true
 	var by_species: Dictionary = {}
 
 	var fauna_comps := _ecs.get_components("ComFaunaSpecies")
 	var positions := _ecs.get_components("ComPosition")
 	var ai_states := _ecs.get_components("ComAiState")
 
-	for eid in fauna_comps.keys():
+	var keys := fauna_comps.keys()
+	var start_time := Time.get_ticks_msec()
+
+	for eid in keys:
+		if Time.get_ticks_msec() - start_time > 4:
+			await get_tree().process_frame
+			start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				_is_rebuilding = false
+				return
+
 		if not positions.has(eid):
 			continue
 		var species: ComFaunaSpecies = fauna_comps[eid]
@@ -128,6 +145,13 @@ func _rebuild_all() -> void:
 		all_keys[key] = true
 
 	for key in all_keys:
+		if Time.get_ticks_msec() - start_time > 4:
+			await get_tree().process_frame
+			start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				_is_rebuilding = false
+				return
+				
 		if not by_species.has(key):
 			_set_instance_count(key, 0)
 			continue
@@ -135,6 +159,8 @@ func _rebuild_all() -> void:
 		var count := mini(instances.size(), MAX_INSTANCES_PER_TYPE)
 		var mm := _get_or_create_multimesh(key, count)
 		_update_instances(mm, instances, key, count)
+
+	_is_rebuilding = false
 
 
 func _get_or_create_multimesh(species_key: String, count: int) -> MultiMesh:

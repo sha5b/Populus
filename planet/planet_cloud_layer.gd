@@ -1,7 +1,7 @@
 extends Node3D
 class_name PlanetCloudLayer
 
-const MAX_REBUILDS_PER_FRAME := 1
+const MAX_REBUILDS_PER_FRAME := 4
 const CLOUD_LOD_STEP := 2
 
 var _projector: PlanetProjector
@@ -17,6 +17,7 @@ var _morph_t: float = 0.5
 var _rebuild_cycle_timer: float = 0.0
 var _fog_material: ShaderMaterial
 var _rain_material: ShaderMaterial
+var _is_rebuilding_chunk: PackedByteArray
 
 
 func setup(proj: PlanetProjector, atmo: AtmosphereGrid) -> void:
@@ -27,12 +28,12 @@ func setup(proj: PlanetProjector, atmo: AtmosphereGrid) -> void:
 	_cloud_material = ShaderMaterial.new()
 	_cloud_material.shader = shader
 	_cloud_material.render_priority = 1
-	
+
 	var fog_shader := load("res://shaders/fog_layer.gdshader") as Shader
 	_fog_material = ShaderMaterial.new()
 	_fog_material.shader = fog_shader
 	_fog_material.render_priority = 2
-	
+
 	var rain_shader := load("res://shaders/rain_layer.gdshader") as Shader
 	_rain_material = ShaderMaterial.new()
 	_rain_material.shader = rain_shader
@@ -42,19 +43,23 @@ func setup(proj: PlanetProjector, atmo: AtmosphereGrid) -> void:
 	_chunk_meshes.resize(total)
 	_fog_meshes.resize(total)
 	_rain_meshes.resize(total)
+	_is_rebuilding_chunk = PackedByteArray()
+	_is_rebuilding_chunk.resize(total)
+	_is_rebuilding_chunk.fill(0)
+	
 	for i in range(total):
 		var mi := MeshInstance3D.new()
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.material_override = _cloud_material
 		add_child(mi)
 		_chunk_meshes[i] = mi
-		
+
 		var fmi := MeshInstance3D.new()
 		fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		fmi.material_override = _fog_material
 		add_child(fmi)
 		_fog_meshes[i] = fmi
-		
+
 		var rmi := MeshInstance3D.new()
 		rmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		rmi.material_override = _rain_material
@@ -74,7 +79,9 @@ func update_clouds_rolling(delta: float) -> void:
 	for _i in range(MAX_REBUILDS_PER_FRAME):
 		var ci := _rebuild_index
 		_rebuild_index = (_rebuild_index + 1) % total
-		_rebuild_chunk_by_idx(ci)
+		if _is_rebuilding_chunk[ci] == 0:
+			_is_rebuilding_chunk[ci] = 1
+			WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "CloudRebuild")
 
 	_rebuild_cycle_timer += delta
 	var cycle_duration := float(total) / float(MAX_REBUILDS_PER_FRAME) / 60.0
@@ -92,10 +99,12 @@ func update_wind_drift(delta: float, wind_dir: Vector2, wind_speed: float) -> vo
 		_cloud_material.set_shader_parameter("morph_t", _morph_t)
 
 
-func _rebuild_chunk_by_idx(ci: int) -> void:
+func _rebuild_chunk_thread(ci: int) -> void:
 	var cpf := AtmosphereGrid.CHUNKS_PER_FACE
+	@warning_ignore("integer_division")
 	var face: int = ci / (cpf * cpf)
 	var rem: int = ci % (cpf * cpf)
+	@warning_ignore("integer_division")
 	var cv: int = rem / cpf
 	var cu := rem % cpf
 
@@ -104,17 +113,22 @@ func _rebuild_chunk_by_idx(ci: int) -> void:
 		_cloud_altitude, CLOUD_LOD_STEP
 	)
 
-	_chunk_meshes[ci].mesh = mesh
-	
 	var fog_mesh := WeatherMeshGenerator.generate_fog_chunk(
 		_atmo_grid, _projector, face, cu, cv
 	)
-	_fog_meshes[ci].mesh = fog_mesh
-	
+
 	var rain_mesh := WeatherMeshGenerator.generate_rain_chunk(
 		_atmo_grid, _projector, face, cu, cv
 	)
+
+	_apply_meshes.call_deferred(ci, mesh, fog_mesh, rain_mesh)
+
+
+func _apply_meshes(ci: int, cloud_mesh: Mesh, fog_mesh: Mesh, rain_mesh: Mesh) -> void:
+	_chunk_meshes[ci].mesh = cloud_mesh
+	_fog_meshes[ci].mesh = fog_mesh
 	_rain_meshes[ci].mesh = rain_mesh
+	_is_rebuilding_chunk[ci] = 0
 
 
 func set_global_coverage(coverage: float) -> void:

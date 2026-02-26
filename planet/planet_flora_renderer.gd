@@ -12,6 +12,8 @@ var _rebuild_timer: float = 0.0
 const REBUILD_INTERVAL := 4.0
 const MAX_INSTANCES_PER_TYPE := 4096
 
+var _is_rebuilding: bool = false
+
 
 func setup(proj: PlanetProjector, grid: TorusGrid, ecs: EcsWorld) -> void:
 	_projector = proj
@@ -20,17 +22,19 @@ func setup(proj: PlanetProjector, grid: TorusGrid, ecs: EcsWorld) -> void:
 
 
 func _process(delta: float) -> void:
-	_rebuild_timer += delta
-	if _rebuild_timer < REBUILD_INTERVAL:
+	if _is_rebuilding:
 		return
-	_rebuild_timer = 0.0
-	_rebuild_all()
+	_rebuild_timer += delta
+	if _rebuild_timer >= REBUILD_INTERVAL:
+		_rebuild_timer = 0.0
+		_rebuild_all_async()
 
 
-func _rebuild_all() -> void:
+func _rebuild_all_async() -> void:
 	if _ecs == null or _projector == null:
 		return
 
+	_is_rebuilding = true
 	var by_type: Dictionary = {}
 
 	var plants := _ecs.get_components("ComPlantSpecies")
@@ -38,7 +42,17 @@ func _rebuild_all() -> void:
 	var positions := _ecs.get_components("ComPosition")
 	var flammables := _ecs.get_components("ComFlammable")
 
-	for eid in plants.keys():
+	var keys := plants.keys()
+	var start_time := Time.get_ticks_msec()
+
+	for eid in keys:
+		if Time.get_ticks_msec() - start_time > 4:
+			await get_tree().process_frame
+			start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				_is_rebuilding = false
+				return
+
 		if not growths.has(eid) or not positions.has(eid):
 			continue
 
@@ -71,12 +85,20 @@ func _rebuild_all() -> void:
 		})
 
 	for type_key in by_type.keys():
+		if Time.get_ticks_msec() - start_time > 4:
+			await get_tree().process_frame
+			start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				_is_rebuilding = false
+				return
 		_update_multimesh(type_key, by_type[type_key])
 
 	for type_key in _multimeshes.keys():
 		if not by_type.has(type_key):
 			var mmi: MultiMeshInstance3D = _multimeshes[type_key]
 			mmi.multimesh.instance_count = 0
+
+	_is_rebuilding = false
 
 
 func _update_multimesh(type_key: String, instances: Array) -> void:
