@@ -69,23 +69,41 @@ func setup(g: TorusGrid, wg: WaterGrid, ws: SysWeather, temp: PackedFloat32Array
 		_y_d[y] = y + 1 if y < _ch - 1 else 0
 
 
+var _is_stepping: bool = false
+var _step_task_id: int = -1
+var _is_resampling_bed: bool = false
+var _resample_task_id: int = -1
+
 func update(_world: Node, delta: float) -> void:
 	if grid == null or water == null or hydro == null:
 		return
 
-	_timer += delta
-	_terrain_timer += delta
+	if _is_stepping:
+		if _step_task_id != -1 and WorkerThreadPool.is_task_completed(_step_task_id):
+			WorkerThreadPool.wait_for_task_completion(_step_task_id)
+			_step_task_id = -1
+			_is_stepping = false
+			_needs_resample = true
+	else:
+		_timer += delta
+		if _timer >= GameConfig.SWE_TICK_INTERVAL:
+			_timer -= GameConfig.SWE_TICK_INTERVAL
+			_is_stepping = true
+			_step_task_id = WorkerThreadPool.add_task(_step_swe_thread.bind(GameConfig.SWE_TICK_INTERVAL), true, "SweStep")
 
-	if _terrain_timer >= GameConfig.SWE_SAMPLE_TERRAIN_INTERVAL:
-		_terrain_timer = 0.0
-		_resample_bed_from_terrain()
+	if _is_resampling_bed:
+		if _resample_task_id != -1 and WorkerThreadPool.is_task_completed(_resample_task_id):
+			WorkerThreadPool.wait_for_task_completion(_resample_task_id)
+			_resample_task_id = -1
+			_is_resampling_bed = false
+	else:
+		_terrain_timer += delta
+		if _terrain_timer >= GameConfig.SWE_SAMPLE_TERRAIN_INTERVAL:
+			_terrain_timer = 0.0
+			_is_resampling_bed = true
+			_resample_task_id = WorkerThreadPool.add_task(_resample_bed_from_terrain.bind(), true, "SweBedResample")
 
-	if _timer >= GameConfig.SWE_TICK_INTERVAL:
-		_timer -= GameConfig.SWE_TICK_INTERVAL
-		_step_swe(GameConfig.SWE_TICK_INTERVAL)
-		_needs_resample = true
-
-	if _needs_resample:
+	if _needs_resample and not _is_stepping:
 		_resample_timer += delta
 		if _resample_timer >= GameConfig.SWE_RESAMPLE_INTERVAL:
 			_resample_timer = 0.0
@@ -100,7 +118,7 @@ func _resample_bed_from_terrain() -> void:
 			hydro.bed_z[cy * hydro.width + cx] = grid.get_height(gx, gy)
 
 
-func _step_swe(dt_total: float) -> void:
+func _step_swe_thread(dt_total: float) -> void:
 	_apply_rain_and_evaporation(dt_total)
 	var max_speed = _estimate_max_wave_speed()
 
