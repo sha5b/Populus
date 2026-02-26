@@ -390,6 +390,10 @@ func _register_systems() -> void:
 	time_system = SysTime.new()
 	time_system.sun_light = sun
 	world.add_system(time_system)
+	
+	var sys_climate = SysClimate.new()
+	sys_climate.setup(grid, projector, base_temperature_map, base_moisture_map, GameConfig.WORLD_SEED)
+	world.add_system(sys_climate)
 
 	season_system = SysSeason.new()
 	season_system.setup(time_system, temperature_map, moisture_map, base_temperature_map, base_moisture_map)
