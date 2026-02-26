@@ -86,6 +86,10 @@ static func generate_terrain_step4_biomes(
 
 
 static func generate_terrain_step5_flora_fauna(world: EcsWorld, grid: TorusGrid, projector: PlanetProjector, biome_map: PackedInt32Array) -> void:
+	var GenRocksScript = load("res://generation/gen_rocks.gd")
+	var rock_count = GenRocksScript.generate(world, grid, projector, biome_map)
+	print("Rocks generated: %d" % rock_count)
+
 	var flora_count := GenFlora.generate(world, grid, biome_map, projector)
 	print("Flora generated: %d plants." % flora_count)
 

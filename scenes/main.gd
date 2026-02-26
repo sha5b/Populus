@@ -5,6 +5,7 @@ const SysWaterSweScript = preload("res://systems/water/sys_water_swe.gd")
 const SysVolcanismScript = preload("res://systems/erosion/sys_volcanism.gd")
 const SysClimateScript = preload("res://systems/weather/sys_climate.gd")
 const PlanetGeneratorScript = preload("res://generation/planet_generator.gd")
+const PlanetRockRendererScript = preload("res://planet/planet_rock_renderer.gd")
 
 var world: EcsWorld
 var grid: TorusGrid
@@ -30,6 +31,7 @@ var atmo_grid
 var flora_renderer
 var fauna_renderer
 var tribe_renderer
+var rock_renderer
 var chunk_scheduler
 var river_system
 var micro_biome_system
@@ -362,6 +364,11 @@ func _generate_terrain_step5_flora_fauna() -> void:
 	fauna_renderer.name = "FaunaRenderer"
 	fauna_renderer.setup(projector, grid, world)
 	add_child(fauna_renderer)
+	
+	rock_renderer = PlanetRockRendererScript.new()
+	rock_renderer.name = "RockRenderer"
+	rock_renderer.setup(projector, grid, world)
+	add_child(rock_renderer)
 
 
 func _generate_terrain_step6_tribes() -> void:
