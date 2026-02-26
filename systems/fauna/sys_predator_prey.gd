@@ -32,8 +32,10 @@ func update(world: Node, delta: float) -> void:
 	_spatial_prey.clear()
 	for pid in prey_entities:
 		var pp: ComPosition = ecs.get_component(pid, "ComPosition") as ComPosition
-		var cx := pp.grid_x / SPATIAL_CELL
-		var cy := pp.grid_y / SPATIAL_CELL
+		@warning_ignore("integer_division")
+		var cx := int(pp.grid_x / SPATIAL_CELL)
+		@warning_ignore("integer_division")
+		var cy := int(pp.grid_y / SPATIAL_CELL)
 		var key := cy * 1000 + cx
 		if not _spatial_prey.has(key):
 			_spatial_prey[key] = []
@@ -84,8 +86,10 @@ func update(world: Node, delta: float) -> void:
 func _find_nearest_prey(ecs: EcsWorld, hunter_pos: ComPosition, pred: ComPredator, _prey_by_species: Dictionary) -> int:
 	var best_id := -1
 	var best_dist := pred.hunt_range + 1.0
-	var cx := hunter_pos.grid_x / SPATIAL_CELL
-	var cy := hunter_pos.grid_y / SPATIAL_CELL
+	@warning_ignore("integer_division")
+	var cx := int(hunter_pos.grid_x / SPATIAL_CELL)
+	@warning_ignore("integer_division")
+	var cy := int(hunter_pos.grid_y / SPATIAL_CELL)
 	for sdy in range(-1, 2):
 		for sdx in range(-1, 2):
 			var key := (cy + sdy) * 1000 + (cx + sdx)
@@ -120,9 +124,11 @@ func _move_toward(mover: ComPosition, target: ComPosition) -> void:
 		return
 	var dx := target.grid_x - mover.grid_x
 	var dy := target.grid_y - mover.grid_y
-	if absi(dx) > grid.width / 2:
+	@warning_ignore("integer_division")
+	if absi(dx) > int(grid.width / 2):
 		dx = -sign(dx) * (grid.width - absi(dx))
-	if absi(dy) > grid.height / 2:
+	@warning_ignore("integer_division")
+	if absi(dy) > int(grid.height / 2):
 		dy = -sign(dy) * (grid.height - absi(dy))
 	var sx := signi(dx)
 	var sy := signi(dy)

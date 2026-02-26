@@ -5,8 +5,9 @@ const MAX_EMITTERS := 6
 const FOG_EMITTER_COUNT := 3
 
 var _projector: PlanetProjector
-var _grid: TorusGrid
+var _atmo_grid: AtmosphereGrid
 var _scale: float = 1.0
+var _camera: Camera3D = null
 var _emitters: Array[GPUParticles3D] = []
 var _fog_emitters: Array[GPUParticles3D] = []
 var _lightning_bolt: MeshInstance3D = null
@@ -16,9 +17,9 @@ var _is_snow: bool = false
 var _fog_active: bool = false
 
 
-func setup(proj: PlanetProjector, g: TorusGrid = null) -> void:
+func setup(proj: PlanetProjector, atmo: AtmosphereGrid = null) -> void:
 	_projector = proj
-	_grid = g
+	_atmo_grid = atmo
 	_scale = proj.radius / 50.0
 
 	for i in range(MAX_EMITTERS):
@@ -36,6 +37,12 @@ func setup(proj: PlanetProjector, g: TorusGrid = null) -> void:
 	_lightning_bolt = _create_lightning_bolt()
 	_lightning_bolt.visible = false
 	add_child(_lightning_bolt)
+
+	update_positions()
+
+
+func set_camera(cam: Camera3D) -> void:
+	_camera = cam
 
 
 func _get_emitter_offsets() -> Array[Vector2]:
@@ -62,6 +69,7 @@ func _create_rain_emitter() -> GPUParticles3D:
 	mat.gravity = Vector3(0, -40, 0)
 	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	mat.emission_box_extents = Vector3(40.0 * s, 5.0 * s, 40.0 * s)
+	mat.particle_flag_align_y = true
 	p.process_material = mat
 
 	var mesh := QuadMesh.new()
@@ -170,7 +178,9 @@ func _process(delta: float) -> void:
 
 
 func _rebuild_lightning_mesh() -> void:
-	var cam := get_viewport().get_camera_3d() if get_viewport() else null
+	var cam := _camera
+	if cam == null:
+		cam = get_viewport().get_camera_3d() if get_viewport() else null
 	if cam == null or _projector == null:
 		return
 	var cam_pos := cam.global_position
@@ -210,12 +220,15 @@ func _rebuild_lightning_mesh() -> void:
 
 
 func update_positions() -> void:
-	var cam := get_viewport().get_camera_3d() if get_viewport() else null
+	var cam := _camera
+	if cam == null:
+		cam = get_viewport().get_camera_3d() if get_viewport() else null
 	if cam == null or _projector == null:
 		return
 
 	var cam_pos := cam.global_position
 	var surface_up := cam_pos.normalized()
+	var altitude := cam_pos.length() - _projector.radius
 	var tangent := surface_up.cross(Vector3.UP).normalized()
 	if tangent.length_squared() < 0.01:
 		tangent = surface_up.cross(Vector3.RIGHT).normalized()
@@ -224,11 +237,29 @@ func update_positions() -> void:
 	# Place rain at planet surface below camera, not at camera orbit altitude
 	var s := _scale
 	var surface_point := surface_up * (_projector.radius + 1.0)
+	var spawn_height := maxf(6.0, minf(20.0 * s, altitude * 0.5))
 	var offsets := _get_emitter_offsets()
+	
+	var atmo_grid = null
+	var weather_sys = get_tree().root.get_node_or_null("Main/SysWeatherVisuals")
+	if weather_sys:
+		atmo_grid = weather_sys.get("atmo_grid")
 
 	for i in range(MAX_EMITTERS):
 		var offset := offsets[i] if i < offsets.size() else Vector2.ZERO
-		var world_pos := surface_point + tangent * offset.x + bitangent * offset.y + surface_up * 20.0 * s
+		var world_pos := surface_point + tangent * offset.x + bitangent * offset.y + surface_up * spawn_height
+
+		var is_raining := _active
+		if atmo_grid and is_raining:
+			var face_uv = _projector.world_to_cube_face(world_pos)
+			var face: int = face_uv[0]
+			var fu := int(face_uv[1] * float(AtmosphereGrid.FACE_RES))
+			var fv := int(face_uv[2] * float(AtmosphereGrid.FACE_RES))
+			var precip: float = atmo_grid.get_column_precipitation(face, fu, fv)
+			if precip < 0.05:
+				is_raining = false
+
+		_emitters[i].emitting = is_raining
 
 		var orient := Basis(tangent, surface_up, bitangent)
 		_emitters[i].global_transform = Transform3D(orient, world_pos)
@@ -240,7 +271,21 @@ func update_positions() -> void:
 
 	var fog_spread := 25.0 * s
 	var fog_offsets: Array[Vector3] = [Vector3.ZERO, tangent * fog_spread, bitangent * fog_spread]
+	var fog_height := maxf(2.5, minf(5.0 * s, altitude * 0.2))
 	for i in range(mini(_fog_emitters.size(), fog_offsets.size())):
-		var fog_pos: Vector3 = surface_point + fog_offsets[i] + surface_up * 5.0 * s
+		var fog_pos: Vector3 = surface_point + fog_offsets[i] + surface_up * fog_height
+		
+		var is_fogging := _fog_active
+		if atmo_grid and is_fogging:
+			var face_uv = _projector.world_to_cube_face(fog_pos)
+			var face: int = face_uv[0]
+			var fu := int(face_uv[1] * float(AtmosphereGrid.FACE_RES))
+			var fv := int(face_uv[2] * float(AtmosphereGrid.FACE_RES))
+			var dens: float = atmo_grid.get_cloud_density_at(face, fu, fv, 0)
+			if dens < 0.4:
+				is_fogging = false
+
+		_fog_emitters[i].emitting = is_fogging
+		
 		var fog_orient := Basis(tangent, surface_up, bitangent)
 		_fog_emitters[i].global_transform = Transform3D(fog_orient, fog_pos)

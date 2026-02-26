@@ -6,7 +6,7 @@ var wind_system: SysWind = null
 var weather_system: SysWeather = null
 
 var _sim_accumulator: float = 0.0
-const SIM_INTERVAL := 2.0
+const SIM_INTERVAL := GameConfig.ATMOS_SIM_INTERVAL
 
 var _adv_moisture: PackedFloat32Array
 var _adv_temp: PackedFloat32Array
@@ -14,28 +14,18 @@ var _lat_cache: PackedFloat32Array
 var _old_density: PackedFloat32Array
 var _initialized: bool = false
 
-const ADVECTION_RATE := 0.15
-const PRESSURE_SMOOTH := 0.05
-const BUOYANCY_FACTOR := 0.02
-const CORIOLIS_FACTOR := 0.01
-const CONDENSATION_RATE := 0.1
-const EVAPORATION_RATE := 0.12
-const PRECIP_THRESHOLD := 0.5
-const PRECIP_DRAIN := 0.06
-const LATENT_HEAT := 2.0
-const WIND_DAMPING := 0.98
+const ADVECTION_RATE := GameConfig.ATMOS_ADVECTION_RATE
+const PRESSURE_SMOOTH := GameConfig.ATMOS_PRESSURE_SMOOTH
+const BUOYANCY_FACTOR := GameConfig.ATMOS_BUOYANCY_FACTOR
+const CORIOLIS_FACTOR := GameConfig.ATMOS_CORIOLIS_FACTOR
+const CONDENSATION_RATE := GameConfig.ATMOS_CONDENSATION_RATE
+const EVAPORATION_RATE := GameConfig.ATMOS_EVAPORATION_RATE
+const PRECIP_THRESHOLD := GameConfig.ATMOS_PRECIP_THRESHOLD
+const PRECIP_DRAIN := GameConfig.ATMOS_PRECIP_DRAIN
+const LATENT_HEAT := GameConfig.ATMOS_LATENT_HEAT
+const WIND_DAMPING := GameConfig.ATMOS_WIND_DAMPING
 
-const MOISTURE_INJECT := {
-	0: 0.002,   # CLEAR
-	1: 0.008,   # CLOUDY
-	2: 0.02,    # RAIN
-	3: 0.04,    # STORM
-	4: 0.005,   # SNOW
-	5: 0.01,    # FOG
-	6: 0.06,    # BLIZZARD
-	7: 0.08,    # HURRICANE
-	8: -0.01,   # HEATWAVE (dries atmosphere)
-}
+const MOISTURE_INJECT := GameConfig.ATMOS_MOISTURE_INJECT
 
 
 func update(_world: Node, delta: float) -> void:
@@ -89,7 +79,7 @@ func _init_buffers() -> void:
 func _mark_changed_chunks() -> void:
 	var cpf := AtmosphereGrid.CHUNKS_PER_FACE
 	var cs := AtmosphereGrid.CHUNK_SIZE
-	var threshold := 0.02
+	var threshold := GameConfig.ATMOS_DIRTY_THRESHOLD
 
 	for face in range(AtmosphereGrid.NUM_FACES):
 		for cv in range(cpf):

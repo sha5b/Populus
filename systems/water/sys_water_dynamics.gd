@@ -13,29 +13,30 @@ var _timer: float = 0.0
 var _chunk_offset: int = 0
 var _ocean_current_timer: float = 0.0
 
-const TICK_INTERVAL := 0.5
-const CHUNK_SIZE := 8192
-const OCEAN_CURRENT_INTERVAL := 3.0
+const TICK_INTERVAL := GameConfig.WATER_TICK_INTERVAL
+const CHUNK_SIZE := GameConfig.WATER_CHUNK_SIZE
+const OCEAN_CURRENT_INTERVAL := GameConfig.WATER_OCEAN_CURRENT_INTERVAL
+const OCEAN_CURRENT_SAMPLE_COUNT := GameConfig.WATER_OCEAN_CURRENT_SAMPLE_COUNT
 
-const GRAVITY := 0.08
-const FLOW_DAMPING := 0.92
-const MIN_DEPTH := 0.001
-const RAIN_RATE := 0.0003
-const STORM_RAIN_RATE := 0.001
-const EVAPORATION_BASE := 0.00005
-const EVAPORATION_HEAT_FACTOR := 0.0001
-const WAVE_DECAY := 0.92
-const STORM_WAVE_BOOST := 0.01
-const HURRICANE_WAVE_BOOST := 0.04
-const BLIZZARD_WAVE_BOOST := 0.015
-const WIND_CURRENT_STRENGTH := 0.012
-const HURRICANE_CURRENT_STRENGTH := 0.05
-const HURRICANE_RAIN_RATE := 0.003
-const BLIZZARD_RAIN_RATE := 0.0005
-const HEATWAVE_EVAP_MULT := 4.0
-const THERMAL_CURRENT_STRENGTH := 0.003
-const CORIOLIS_FACTOR := 0.01
-const RIVER_INJECT_RATE := 0.002
+const GRAVITY := GameConfig.WATER_GRAVITY
+const FLOW_DAMPING := GameConfig.WATER_FLOW_DAMPING
+const MIN_DEPTH := GameConfig.WATER_MIN_DEPTH
+const RAIN_RATE := GameConfig.WATER_RAIN_RATE
+const STORM_RAIN_RATE := GameConfig.WATER_STORM_RAIN_RATE
+const EVAPORATION_BASE := GameConfig.WATER_EVAPORATION_BASE
+const EVAPORATION_HEAT_FACTOR := GameConfig.WATER_EVAPORATION_HEAT_FACTOR
+const WAVE_DECAY := GameConfig.WATER_WAVE_DECAY
+const STORM_WAVE_BOOST := GameConfig.WATER_STORM_WAVE_BOOST
+const HURRICANE_WAVE_BOOST := GameConfig.WATER_HURRICANE_WAVE_BOOST
+const BLIZZARD_WAVE_BOOST := GameConfig.WATER_BLIZZARD_WAVE_BOOST
+const WIND_CURRENT_STRENGTH := GameConfig.WATER_WIND_CURRENT_STRENGTH
+const HURRICANE_CURRENT_STRENGTH := GameConfig.WATER_HURRICANE_CURRENT_STRENGTH
+const HURRICANE_RAIN_RATE := GameConfig.WATER_HURRICANE_RAIN_RATE
+const BLIZZARD_RAIN_RATE := GameConfig.WATER_BLIZZARD_RAIN_RATE
+const HEATWAVE_EVAP_MULT := GameConfig.WATER_HEATWAVE_EVAP_MULT
+const THERMAL_CURRENT_STRENGTH := GameConfig.WATER_THERMAL_CURRENT_STRENGTH
+const CORIOLIS_FACTOR := GameConfig.WATER_CORIOLIS_FACTOR
+const RIVER_INJECT_RATE := GameConfig.WATER_RIVER_INJECT_RATE
 
 
 func setup(
@@ -77,7 +78,7 @@ func _process_chunk() -> void:
 	var total := water.width * water.height
 	var end_idx := mini(_chunk_offset + CHUNK_SIZE, total)
 
-	var state := DefEnums.WeatherState.CLEAR
+	var state: int = DefEnums.WeatherState.CLEAR
 	if weather_system:
 		state = weather_system.current_state
 
@@ -95,7 +96,7 @@ func _process_chunk() -> void:
 
 	for i in range(_chunk_offset, end_idx):
 		var x := i % water.width
-		var y := i / water.width
+		var y := int(float(i) / float(water.width))
 		_simulate_tile_full(x, y, i, is_raining, is_storm, is_hurricane, is_blizzard, is_heatwave, wind_dir, wind_speed)
 
 	_chunk_offset = end_idx if end_idx < total else 0
@@ -224,14 +225,14 @@ func _update_ocean_currents() -> void:
 
 	# Temperature-driven thermohaline circulation
 	# Warm equatorial water flows poleward, cold polar water sinks and flows equatorward
-	var equator_y := h / 2
-	var chunk_size := 512
+	var equator_y := int(float(h) * 0.5)
+	var chunk_size := OCEAN_CURRENT_SAMPLE_COUNT
 	var offset := randi() % maxi(w * h, 1)
 
 	for _i in range(chunk_size):
 		var idx := (offset + _i) % (w * h)
 		var x := idx % w
-		var y := int(idx / w)
+		var y := int(float(idx) / float(w))
 		var depth := water.water_depth[idx]
 
 		if depth < 0.05:

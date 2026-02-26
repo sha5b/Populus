@@ -1,9 +1,9 @@
 class_name GenFlora
 
-const MAX_FLORA_PER_TILE := 1
-const MAX_TOTAL_FLORA := 64000
-const MAX_AQUATIC_FLORA := 20000
-const AQUATIC_DENSITY := 0.10
+const MAX_FLORA_PER_TILE := 3
+const MAX_TOTAL_FLORA := 120000
+const MAX_AQUATIC_FLORA := 30000
+const AQUATIC_DENSITY := 0.15
 
 static var _clump_noise: FastNoiseLite
 static var _species_noise: FastNoiseLite
@@ -71,23 +71,30 @@ static func _try_place_land_flora(world: EcsWorld, grid: TorusGrid, proj: Planet
 
 	# Fertility from biome affects density
 	var fertility: float = biome_data.get("fertility", 0.5)
-	var effective_density := tree_density * lerpf(0.4, 1.0, fertility) * clump_boost
-
-	var roll := rng.randf()
-	if roll > effective_density:
-		return 0
+	var effective_density := tree_density * lerpf(0.6, 1.2, fertility) * clump_boost
 
 	var valid_species := DefFlora.get_species_for_biome(biome)
 	if valid_species.is_empty():
 		return 0
 
-	# Use noise to bias species selection for natural patches of same species
-	var sp_noise := (_species_noise.get_noise_2d(float(x) * 2.0, float(y) * 2.0) + 1.0) * 0.5
-	var sp_idx := int(sp_noise * float(valid_species.size())) % valid_species.size()
-	var species_key: String = valid_species[sp_idx]
-
-	_spawn_flora_entity(world, grid, proj, rng, x, y, height, species_key)
-	return 1
+	var spawned := 0
+	# Try to spawn multiple flora per tile based on density
+	var attempts := int(ceil(effective_density * 3.0))
+	for i in range(attempts):
+		if rng.randf() > effective_density:
+			continue
+			
+		# Use noise to bias species selection for natural patches of same species
+		var sp_noise := (_species_noise.get_noise_2d(float(x) * 2.0 + float(i), float(y) * 2.0 + float(i)) + 1.0) * 0.5
+		var sp_idx := int(sp_noise * float(valid_species.size())) % valid_species.size()
+		var species_key: String = valid_species[sp_idx]
+	
+		_spawn_flora_entity(world, grid, proj, rng, x, y, height, species_key)
+		spawned += 1
+		if spawned >= MAX_FLORA_PER_TILE:
+			break
+			
+	return spawned
 
 
 static func _try_place_aquatic_flora(world: EcsWorld, grid: TorusGrid, proj: PlanetProjector, rng: RandomNumberGenerator, x: int, y: int, height: float) -> int:

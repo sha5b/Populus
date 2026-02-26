@@ -7,6 +7,8 @@ var components: Dictionary = {}
 var systems: Array = []
 var _query_cache: Dictionary = {}
 var _cache_generation: int = 0
+var _removal_queue: Array[int] = []
+var _is_updating: bool = false
 
 
 func create_entity() -> Entity:
@@ -57,10 +59,19 @@ func query(required: Array[String]) -> Array[int]:
 
 
 func remove_entity(entity_id: int) -> void:
-	entities.erase(entity_id)
-	for comp_type in components.keys():
-		components[comp_type].erase(entity_id)
-	_cache_generation += 1
+	if _is_updating:
+		if not _removal_queue.has(entity_id):
+			_removal_queue.append(entity_id)
+	else:
+		_execute_removal(entity_id)
+
+
+func _execute_removal(entity_id: int) -> void:
+	if entities.has(entity_id):
+		entities.erase(entity_id)
+		for comp_type in components.keys():
+			components[comp_type].erase(entity_id)
+		_cache_generation += 1
 
 
 func add_system(system: System) -> void:
@@ -72,5 +83,12 @@ func get_entity_count() -> int:
 
 
 func _process(delta: float) -> void:
+	_is_updating = true
 	for system in systems:
 		system.update(self, delta)
+	_is_updating = false
+	
+	if not _removal_queue.is_empty():
+		for eid in _removal_queue:
+			_execute_removal(eid)
+		_removal_queue.clear()

@@ -43,7 +43,7 @@ func _snapshot_heights() -> void:
 	_last_heights.resize(total)
 	var w := grid.width
 	for i in range(total):
-		_last_heights[i] = grid.get_height(i % w, int(i / w))
+		_last_heights[i] = grid.get_height(i % w, int(float(i) / float(w)))
 
 
 func update(_world: Node, delta: float) -> void:
@@ -51,20 +51,27 @@ func update(_world: Node, delta: float) -> void:
 	if _timer < TICK_INTERVAL:
 		return
 	_timer -= TICK_INTERVAL
-	_reassign_chunk()
+	_reassign_chunk(_world)
 
 
-func _reassign_chunk() -> void:
+func _reassign_chunk(world: Node) -> void:
 	var w := grid.width
 	var total := w * grid.height
 	var has_noise := continentalness_map.size() == total
 	var start := _chunk_offset
-	var end_idx := mini(start + CHUNK_SIZE, total)
+	var end_idx: int = mini(start + CHUNK_SIZE, total)
 	var tiles_changed := 0
+
+	var season_offset := 0.0
+	if world is EcsWorld:
+		for s in world.systems:
+			if s is SysTime:
+				season_offset = SysSeason.SEASON_TEMP_OFFSET.get(s.season, 0.0)
+				break
 
 	for i in range(start, end_idx):
 		var x := i % w
-		var y := int(i / w)
+		var y := int(float(i) / float(w))
 		var current_h := grid.get_height(x, y)
 		var delta_h := absf(current_h - _last_heights[i])
 
@@ -72,7 +79,7 @@ func _reassign_chunk() -> void:
 			continue
 
 		_last_heights[i] = current_h
-		var temp := temperature_map[i] if i < temperature_map.size() else 0.5
+		var temp := (temperature_map[i] - season_offset) if i < temperature_map.size() else 0.5
 		var moist := moisture_map[i] if i < moisture_map.size() else 0.5
 		var cont := continentalness_map[i] if has_noise else 0.5
 		var ero := erosion_map[i] if has_noise else 0.5

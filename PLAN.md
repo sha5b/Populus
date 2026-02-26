@@ -44,9 +44,9 @@ PART B — NATURE LIVES (no humans yet, planet ecology runs itself)
   Phase 9f: Water Dynamics System ............................. ✅ DONE
 
 PART C — CIVILIZATION LIVES (tribes run themselves, no player tribe)
-  Phase 10: Tribes, Followers & Autonomous Settlement ......... PLANNED
-  Phase 11: Buildings, Mana, Population & Training ............ PLANNED
-  Phase 12: Spells, Terrain Manipulation & Combat ............. PLANNED
+  Phase 10: Tribes, Followers & Autonomous Settlement ......... IN PROGRESS
+  Phase 11: Buildings, Mana, Population & Training ............ IN PROGRESS
+  Phase 12: Spells, Terrain Manipulation & Combat ............. IN PROGRESS
 
 PART D — PLAYER ENTERS (now the human can interact)
   Phase 13: Player Tribe, Input, UI, Save/Load ............... PLANNED
@@ -1530,7 +1530,7 @@ Log: mana income per tribe per minute matches expected formula.
   - Trigger `sys_terrain_render` mesh update for affected region
   - Check buildings: if foundation no longer flat → destroy building
 
-- [ ] **12.6** Create `sys_combat.gd`
+- [x] **12.6** Create `sys_combat.gd`
   - Melee: if enemy within attack_range → deal damage per attack_speed
   - Ranged: Firewarrior fires at enemies within range, damage falloff with distance
   - Guard Tower bonus: garrisoned unit's range multiplied

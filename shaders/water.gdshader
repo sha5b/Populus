@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_toon, specular_toon;
 
 uniform sampler2D depth_texture : hint_depth_texture, filter_linear_mipmap;
 uniform vec3 shallow_color : source_color = vec3(0.12, 0.40, 0.50);
@@ -65,8 +65,8 @@ void fragment() {
 
 	// Alpha: shallow = very transparent, deep = gradually opaque
 	// This lets you see underwater terrain through the water
-	float base_alpha = mix(0.08, max_alpha, depth_t * depth_t);
-	float alpha = max(vertex_alpha * 0.6, base_alpha);
+	float base_alpha = mix(0.18, max_alpha, depth_t * depth_t);
+	float alpha = max(vertex_alpha * 0.75, base_alpha);
 	alpha = clamp(alpha + fresnel * 0.15, 0.0, max_alpha);
 
 	ALBEDO = water_col;

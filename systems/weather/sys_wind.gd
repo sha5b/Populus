@@ -13,19 +13,19 @@ var _time_acc: float = 0.0
 func _init() -> void:
 	_noise = FastNoiseLite.new()
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_noise.frequency = 0.1
+	_noise.frequency = GameConfig.WIND_NOISE_FREQUENCY
 	_noise.seed = randi()
 
 
 var _hurricane_angle: float = 0.0
 
 func update(_world: Node, delta: float) -> void:
-	_time_acc += delta * GameConfig.TIME_SCALE * 0.005
+	_time_acc += delta * GameConfig.TIME_SCALE * GameConfig.WIND_TIME_ACC_SCALE
 
-	var perturbation := _noise.get_noise_1d(_time_acc) * 0.3
+	var perturbation := _noise.get_noise_1d(_time_acc) * GameConfig.WIND_PERTURBATION_STRENGTH
 	var base_angle := 0.0 + perturbation
 
-	var base_speed := 1.5 + _noise.get_noise_1d(_time_acc + 100.0) * 0.5
+	var base_speed := GameConfig.WIND_BASE_SPEED + _noise.get_noise_1d(_time_acc + 100.0) * GameConfig.WIND_BASE_SPEED_NOISE
 	if weather_system:
 		match weather_system.current_state:
 			DefEnums.WeatherState.HURRICANE:
@@ -55,7 +55,7 @@ func update(_world: Node, delta: float) -> void:
 		_hurricane_angle = 0.0
 
 	direction = Vector2(cos(base_angle), sin(base_angle))
-	speed = maxf(base_speed, 0.2)
+	speed = maxf(base_speed, GameConfig.WIND_MIN_SPEED)
 
 
 func get_wind_at_latitude(lat_fraction: float) -> Vector2:

@@ -13,6 +13,8 @@ var _prev_season: int = DefEnums.Season.SPRING
 
 var sun_light: DirectionalLight3D = null
 var day_night_energy: float = 1.2
+var sun_direction: Vector3 = Vector3(0, -1, 0)
+var is_night: bool = false
 
 
 func update(world: Node, delta: float) -> void:
@@ -45,12 +47,16 @@ func _update_day_night() -> void:
 		return
 
 	var hour_frac := float(hour) + fmod(game_time / 60.0, 1.0)
+	var days_per_year := float(GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR)
+	var day_of_year := float(day % int(days_per_year))
+	var year_phase := (day_of_year / days_per_year) * TAU
 
 	# Sun elevation: 0h = nadir (-90°), 6h = horizon (0°), 12h = zenith (90°), 18h = horizon (0°)
 	# Maps 0-24h to a full rotation on X axis
 	var elevation_deg := (hour_frac / 24.0) * 360.0 - 90.0
-	var axial_tilt := 23.0
-	sun_light.rotation_degrees = Vector3(elevation_deg, 30.0, axial_tilt)
+	var axial_tilt_deg := 23.0
+	var seasonal_declination_deg := axial_tilt_deg * sin(year_phase)
+	sun_light.rotation_degrees = Vector3(elevation_deg, 30.0, seasonal_declination_deg)
 
 	# Dawn/dusk coloring, night dimming
 	var day_t := 0.0
@@ -61,18 +67,13 @@ func _update_day_night() -> void:
 	elif hour_frac > 19.0 and hour_frac < 20.0:
 		day_t = 1.0 - (hour_frac - 19.0)
 
-	day_night_energy = lerpf(0.05, 1.2, day_t)
-	sun_light.light_energy = day_night_energy
+	day_night_energy = 1.2
+	sun_light.light_energy = 1.2
 
-	# Sunrise/sunset warm tint
-	if hour_frac > 5.5 and hour_frac < 7.5:
-		var dawn_t := 1.0 - absf(hour_frac - 6.5) / 1.0
-		sun_light.light_color = Color(1.0, 0.85, 0.7).lerp(Color(1.0, 0.98, 0.95), 1.0 - dawn_t)
-	elif hour_frac > 18.5 and hour_frac < 20.5:
-		var dusk_t := 1.0 - absf(hour_frac - 19.5) / 1.0
-		sun_light.light_color = Color(1.0, 0.75, 0.5).lerp(Color(1.0, 0.98, 0.95), 1.0 - dusk_t)
-	else:
-		sun_light.light_color = Color(1.0, 0.98, 0.95)
+	sun_direction = -sun_light.global_transform.basis.z
+	is_night = day_t <= 0.001
+
+	sun_light.light_color = Color(1.0, 0.98, 0.95)
 
 
 func _season_name(s: int) -> String:

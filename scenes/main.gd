@@ -1,5 +1,9 @@
 extends Node3D
 
+const SysDiurnalTemperatureScript = preload("res://systems/time/sys_diurnal_temperature.gd")
+const SysWaterSweScript = preload("res://systems/water/sys_water_swe.gd")
+const SysVolcanismScript = preload("res://systems/erosion/sys_volcanism.gd")
+
 var world: EcsWorld
 var grid: TorusGrid
 var projector: PlanetProjector
@@ -11,30 +15,33 @@ var base_temperature_map: PackedFloat32Array
 var base_moisture_map: PackedFloat32Array
 var biome_map: PackedInt32Array
 
-var time_system: SysTime
-var season_system: SysSeason
-var weather_system: SysWeather
-var wind_system: SysWind
-var weather_visuals: SysWeatherVisuals
-var cloud_layer_node: PlanetCloudLayer
-var atmosphere_node: PlanetAtmosphere
-var rain_system: PlanetRain
-var atmo_grid: AtmosphereGrid
-var flora_renderer: PlanetFloraRenderer
-var fauna_renderer: PlanetFaunaRenderer
-var chunk_scheduler: ChunkScheduler
-var river_system: SysRiverFormation
-var micro_biome_system: SysMicroBiome
-var biome_reassign_system: SysBiomeReassign
-var water_grid: WaterGrid
-var water_mesh: PlanetWaterMesh
-var water_dynamics: SysWaterDynamics
-var heightmap_gen: GenHeightmap
+var time_system
+var season_system
+var weather_system
+var diurnal_temp_system
+var wind_system
+var weather_visuals
+var cloud_layer_node
+var atmosphere_node
+var rain_system
+var atmo_grid
+var flora_renderer
+var fauna_renderer
+var tribe_renderer
+var chunk_scheduler
+var river_system
+var micro_biome_system
+var biome_reassign_system
+var water_grid
+var water_mesh
+var water_dynamics
+var swe_river_map: PackedFloat32Array
+var heightmap_gen
 var _continentalness_map: PackedFloat32Array
 var _erosion_noise_map: PackedFloat32Array
 var _weirdness_map: PackedFloat32Array
 var _debug_label: Label
-
+var player_character: PlayerCharacter
 
 var _loading_label: Label
 var _is_generating: bool = true
@@ -245,7 +252,10 @@ func _add_cloud_and_atmosphere() -> void:
 func _add_rain_snow_particles() -> void:
 	rain_system = PlanetRain.new()
 	rain_system.name = "PlanetRain"
-	rain_system.setup(projector, grid)
+	rain_system.setup(projector, atmo_grid)
+	var cam := get_node_or_null("DebugCamera") as Camera3D
+	if cam:
+		rain_system.set_camera(cam)
 	add_child(rain_system)
 	print("Planet rain system added.")
 
@@ -260,6 +270,14 @@ func _add_camera_and_light() -> void:
 	camera.projector = projector
 	camera.grid = grid
 	camera.current = true
+	
+	player_character = PlayerCharacter.new()
+	player_character.name = "PlayerCharacter"
+	player_character.setup(projector, grid, float(GameConfig.GRID_WIDTH) * 0.5, float(GameConfig.GRID_HEIGHT) * 0.5)
+	add_child(player_character)
+	
+	camera.player_character = player_character
+	
 	add_child(camera)
 
 	var light := DirectionalLight3D.new()
@@ -277,7 +295,7 @@ func _add_camera_and_light() -> void:
 	environment.background_color = Color(0.02, 0.02, 0.05)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.15, 0.15, 0.2)
-	environment.ambient_light_energy = 0.3
+	environment.ambient_light_energy = 0.08
 	env.environment = environment
 	add_child(env)
 
@@ -355,6 +373,15 @@ func _generate_terrain_step5_flora_fauna() -> void:
 	add_child(fauna_renderer)
 	print("Fauna generated.")
 
+func _generate_terrain_step6_tribes() -> void:
+	GenSettlement.generate(world, grid, projector)
+	print("Tribes generated.")
+
+	tribe_renderer = PlanetTribeRenderer.new()
+	tribe_renderer.name = "TribeRenderer"
+	tribe_renderer.setup(projector, grid, world)
+	add_child(tribe_renderer)
+
 
 
 func _register_systems() -> void:
@@ -369,7 +396,11 @@ func _register_systems() -> void:
 	world.add_system(season_system)
 
 	weather_system = SysWeather.new()
-	weather_system.time_system = time_system
+	weather_system.setup(time_system, grid, temperature_map, moisture_map)
+
+	diurnal_temp_system = SysDiurnalTemperatureScript.new()
+	diurnal_temp_system.setup(time_system, weather_system, grid, temperature_map, base_temperature_map)
+	world.add_system(diurnal_temp_system)
 	world.add_system(weather_system)
 
 	wind_system = SysWind.new()
@@ -399,6 +430,10 @@ func _register_systems() -> void:
 	var tectonic := SysTectonicUplift.new()
 	tectonic.setup(grid, heightmap_gen, projector)
 	world.add_system(tectonic)
+
+	var volcanism := SysVolcanismScript.new()
+	volcanism.setup(grid, heightmap_gen, projector, temperature_map)
+	world.add_system(volcanism)
 
 	river_system.time_system = time_system
 	world.add_system(river_system)
@@ -437,24 +472,34 @@ func _register_systems() -> void:
 	weather_visuals.sun_light = get_node("SunLight") as DirectionalLight3D
 	world.add_system(weather_visuals)
 
-	var flora_growth := SysFloraGrowth.new()
-	flora_growth.setup(grid, moisture_map, temperature_map, time_system)
-	world.add_system(flora_growth)
-
-	var seed_dispersal := SysSeedDispersal.new()
-	seed_dispersal.setup(grid, projector, wind_system, moisture_map)
-	world.add_system(seed_dispersal)
-
-	var fire_spread := SysFireSpread.new()
+	var fire_spread = SysFireSpread.new()
 	fire_spread.setup(grid, weather_system, wind_system)
 	world.add_system(fire_spread)
 
-	var fauna_ai := SysFaunaAi.new()
-	fauna_ai.setup(grid, projector, time_system)
+	var SysConstructionClass = load("res://systems/tribe/sys_construction.gd")
+	var construction = SysConstructionClass.new()
+	construction.setup(grid)
+	world.add_system(construction)
+	
+	var SysCombatClass = load("res://systems/sys_combat.gd")
+	var combat_sys = SysCombatClass.new()
+	combat_sys.setup(grid)
+	world.add_system(combat_sys)
+
+	var brave_ai = SysBraveAi.new()
+	brave_ai.setup(grid)
+	world.add_system(brave_ai)
+
+	var tribal_ai = SysTribalAi.new()
+	tribal_ai.setup(grid, projector)
+	world.add_system(tribal_ai)
+
+	var fauna_ai = SysFaunaAi.new()
+	fauna_ai.setup(grid, projector, time_system, water_grid)
 	world.add_system(fauna_ai)
 
 	var fauna_hunger := SysHunger.new()
-	fauna_hunger.setup(grid)
+	fauna_hunger.setup(grid, water_grid)
 	world.add_system(fauna_hunger)
 
 	var predator_prey := SysPredatorPrey.new()
@@ -473,9 +518,15 @@ func _register_systems() -> void:
 	migration.setup(grid, projector, time_system)
 	world.add_system(migration)
 
-	water_dynamics = SysWaterDynamics.new()
-	water_dynamics.setup(grid, water_grid, weather_system, wind_system, temperature_map, moisture_map, river_system)
-	world.add_system(water_dynamics)
+	if GameConfig.USE_SWE_WATER:
+		water_dynamics = SysWaterSweScript.new()
+		water_dynamics.setup(grid, water_grid, weather_system, temperature_map)
+		swe_river_map = water_dynamics.river_map
+		world.add_system(water_dynamics)
+	else:
+		water_dynamics = SysWaterDynamics.new()
+		water_dynamics.setup(grid, water_grid, weather_system, wind_system, temperature_map, moisture_map, river_system)
+		world.add_system(water_dynamics)
 
 	print("All systems registered (including flora + fauna + water).")
 
@@ -538,7 +589,9 @@ func _process(delta: float) -> void:
 	if _mesh_rebuild_timer >= _mesh_rebuild_interval:
 		_mesh_rebuild_timer = 0.0
 		planet_mesh.set_biome_map(biome_map)
-		if river_system:
+		if GameConfig.USE_SWE_WATER and not swe_river_map.is_empty():
+			planet_mesh.set_river_map(swe_river_map)
+		elif river_system:
 			planet_mesh.set_river_map(river_system.river_map)
 		if micro_biome_system:
 			planet_mesh.set_micro_biome_map(micro_biome_system.micro_biome_map)
@@ -551,8 +604,8 @@ func _process(delta: float) -> void:
 			chunk_scheduler.set_camera_grid_pos(float(grid_pos.x), float(grid_pos.y))
 
 	if time_system and _debug_label:
-		var weather_str := weather_system.get_state_string() if weather_system else "?"
-		var wind_str := wind_system.get_wind_string() if wind_system else "?"
+		var weather_str: String = weather_system.get_state_string() if weather_system else "?"
+		var wind_str: String = wind_system.get_wind_string() if wind_system else "?"
 		_debug_label.text = "%s | %s | Wind: %s | FPS: %d | Entities: %d" % [
 			time_system.get_time_string(),
 			weather_str,

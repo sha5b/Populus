@@ -165,7 +165,7 @@ Each tile has **temperature**, **moisture**, and **altitude** values that combin
 ### 9. Day/Night & Time System
 
 - **Game Clock**: Configurable time scale (e.g., 1 real second = 1 game minute).
-- **Day/Night Cycle**: Affects visibility, unit behavior (sleep at night), predator activity.
+- **Day/Night Cycle**: Affects visibility, unit behavior (sleep at night), predator activity. Sun direction updates constantly and drives diurnal temperatures on the surface.
 - **Seasons**: Spring → Summer → Autumn → Winter. Affects temperature, moisture, vegetation growth, animal behavior.
 - **Event Timeline**: Scheduled events (migrations, storms, volcanic activity) triggered by the time system.
 
@@ -192,6 +192,17 @@ Each tile has **temperature**, **moisture**, and **altitude** values that combin
 | **Aquatic** | Reeds, Kelp, Lily Pads | Grow in water/wetlands, fish habitat |
 
 **Behaviors**: Seed dispersal (wind, water, animal-carried), growth stages (seed → sapling → mature → old → dead), response to fire, drought, flooding, seasonal dormancy, biome-appropriate species distribution.
+
+### 12. Shallow-Water Equations (SWE) Simulation
+
+- **Hydrology Grid**: Water movement is modeled physically using shallow-water equations (Rusanov flux, CFL sub-stepping).
+- **Rain & Evaporation**: Acts as physical mass exchange, directly filling basins or drying terrain.
+- **Rivers**: Emergent from discharge calculation (depth × velocity), rather than static carving.
+
+### 13. Tectonics & Volcanism
+
+- **Magma Pressure**: A fluid crust/magma layer runs beneath the surface, injecting pressure along tectonic convergent/divergent boundaries and hotspots.
+- **Volcanic Eruptions**: High magma pressure triggers explosive uplift and intense local heat, shaping ridges over time.
 
 ---
 

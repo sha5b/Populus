@@ -224,7 +224,7 @@ func _get_plate_info(dir: Vector3) -> Array:
 	return [boundary_factor, is_convergent, _plate_is_continental[closest_idx]]
 
 
-func _make_noise(seed_val: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:
+func _make_noise(seed_val: int, freq: float, octaves: int, fractal: FastNoiseLite.FractalType) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
 	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	n.fractal_type = fractal
@@ -283,4 +283,8 @@ func _normalize(grid: TorusGrid, min_h: float, max_h: float) -> void:
 		for x in range(w):
 			var normalized := (grid.get_height(x, y) - min_h) / range_h
 			var shifted := normalized - sea_threshold
+			if shifted < GameConfig.SEA_LEVEL:
+				var depth := GameConfig.SEA_LEVEL - shifted
+				depth = pow(depth, GameConfig.OCEAN_DEPTH_POWER) * GameConfig.OCEAN_DEPTH_MULT
+				shifted = GameConfig.SEA_LEVEL - depth
 			grid.set_height(x, y, shifted)

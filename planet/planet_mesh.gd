@@ -10,7 +10,7 @@ var is_dirty: bool = false
 var _color_noise: FastNoiseLite
 var _color_noise2: FastNoiseLite
 
-const FACE_RES := 96
+const FACE_RES := 128
 const NUM_FACES := 6
 
 
@@ -184,10 +184,10 @@ func _color_at_tile(tx: int, ty: int) -> Color:
 
 	# Shore gradient: tiles just above sea level get wet sand tint
 	var sea := GameConfig.SEA_LEVEL
-	if height > sea and height < sea + 0.04:
-		var shore_t := clampf((height - sea) / 0.04, 0.0, 1.0)
+	if height > sea and height < sea + 0.06:
+		var shore_t := clampf((height - sea) / 0.06, 0.0, 1.0)
 		var wet_sand := Color(0.55, 0.50, 0.35)
-		col = wet_sand.lerp(col, shore_t)
+		col = wet_sand.lerp(col, shore_t * shore_t)
 
 	# River bank tint: tiles adjacent to rivers get darker/muddy
 	if river_map.size() > idx and idx >= 0 and river_map[idx] <= 0.0:

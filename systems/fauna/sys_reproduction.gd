@@ -23,7 +23,7 @@ func update(world: Node, delta: float) -> void:
 	_timer -= TICK_INTERVAL
 
 	var ecs := world as EcsWorld
-	var entities := ecs.query(["ComFaunaSpecies", "ComReproduction", "ComPosition", "ComHunger"])
+	var entities := ecs.query(["ComFaunaSpecies", "ComReproduction", "ComPosition", "ComHunger", "ComAiState"])
 
 	var secs_per_year := float(GameConfig.HOURS_PER_DAY * GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR) * 60.0
 	var years_per_tick := (TICK_INTERVAL * GameConfig.TIME_SCALE) / secs_per_year
@@ -37,6 +37,7 @@ func update(world: Node, delta: float) -> void:
 		var repro: ComReproduction = ecs.get_component(eid, "ComReproduction") as ComReproduction
 		var pos: ComPosition = ecs.get_component(eid, "ComPosition") as ComPosition
 		var hunger: ComHunger = ecs.get_component(eid, "ComHunger") as ComHunger
+		var ai: ComAiState = ecs.get_component(eid, "ComAiState") as ComAiState
 
 		repro.cooldown -= years_per_tick
 		if repro.cooldown > 0.0:
@@ -46,6 +47,9 @@ func update(world: Node, delta: float) -> void:
 			continue
 
 		if hunger.current > hunger.max_hunger * 0.6:
+			continue
+			
+		if ai == null or ai.current_state != DefEnums.AIState.MATING:
 			continue
 
 		var count: int = _species_counts.get(species.species_key, 0)
@@ -107,6 +111,11 @@ func _find_mate(ecs: EcsWorld, self_id: int, species: ComFaunaSpecies, self_pos:
 			continue
 		if other_sp.age < other_repro.maturity_age:
 			continue
+			
+		var other_ai: ComAiState = ecs.get_component(eid, "ComAiState") as ComAiState
+		if other_ai == null or other_ai.current_state != DefEnums.AIState.MATING:
+			continue
+			
 		var other_pos: ComPosition = ecs.get_component(eid, "ComPosition") as ComPosition
 		if _grid_dist(self_pos, other_pos) <= MATE_RANGE:
 			return eid

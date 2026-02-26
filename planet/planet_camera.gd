@@ -1,7 +1,7 @@
 extends Camera3D
 class_name PlanetCamera
 
-enum Mode { ORBIT, FPS }
+enum Mode { ORBIT, THIRD_PERSON }
 
 var mode: Mode = Mode.ORBIT
 
@@ -22,19 +22,15 @@ var _target: Vector3 = Vector3.ZERO
 var _is_rotating: bool = false
 var _is_panning: bool = false
 
-var _fps_grid_pos: Vector2 = Vector2(128.0, 128.0)
-var _fps_yaw: float = 0.0
-var _fps_pitch: float = 0.0
-var _fps_eye_height: float = 3.0
-var _fps_move_speed: float = 20.0
-var _fps_look_speed: float = 0.003
-var _fps_mouse_captured: bool = false
-var _fps_tangent_fwd: Vector3 = Vector3.FORWARD
-var _fps_tangent_right: Vector3 = Vector3.RIGHT
-var _fps_surface_up: Vector3 = Vector3.UP
+var _third_person_yaw: float = 0.0
+var _third_person_pitch: float = -0.3
+var _third_person_distance: float = 25.0
+var _third_person_look_speed: float = 0.003
+var _mouse_captured: bool = false
 
 var projector: PlanetProjector = null
 var grid: TorusGrid = null
+var player_character: Node3D = null # The PlayerCharacter node to follow
 
 
 func _ready() -> void:
@@ -51,33 +47,36 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mode == Mode.ORBIT:
 		_orbit_input(event)
 	else:
-		_fps_input(event)
+		_third_person_input(event)
 
 
 func _process(delta: float) -> void:
 	if mode == Mode.ORBIT:
 		_orbit_process(delta)
 	else:
-		_fps_process(delta)
+		_third_person_process(delta)
 
 
 func _toggle_mode() -> void:
 	if mode == Mode.ORBIT:
-		mode = Mode.FPS
-		_fps_mouse_captured = true
+		mode = Mode.THIRD_PERSON
+		_mouse_captured = true
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		if projector:
-			var grid_pos := projector.sphere_to_grid(_target)
-			_fps_grid_pos = Vector2(float(grid_pos.x), float(grid_pos.y))
-		_fps_yaw = yaw
-		_fps_pitch = 0.0
-		_update_fps_transform()
-		print("Camera: FPS mode (Tab to return to orbit)")
+		
+		# If we have a player character, snap the camera to them
+		_third_person_yaw = yaw
+		_third_person_pitch = -0.2
+		_update_third_person_transform()
+		print("Camera: 3rd Person mode (Tab to return to orbit)")
 	else:
 		mode = Mode.ORBIT
-		_fps_mouse_captured = false
+		_mouse_captured = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		_target = Vector3.ZERO
+		# Snap target back to player character pos to maintain context
+		if player_character:
+			_target = player_character.global_position
+		else:
+			_target = Vector3.ZERO
 		_update_transform()
 		print("Camera: Orbit mode")
 
@@ -138,80 +137,59 @@ func _orbit_process(_delta: float) -> void:
 		_update_transform()
 
 
-func _fps_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and _fps_mouse_captured:
+func _third_person_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and _mouse_captured:
 		var mm := event as InputEventMouseMotion
-		_fps_yaw -= mm.relative.x * _fps_look_speed
-		_fps_pitch -= mm.relative.y * _fps_look_speed
-		_fps_pitch = clampf(_fps_pitch, -PI * 0.45, PI * 0.45)
-		_update_fps_transform()
+		_third_person_yaw -= mm.relative.x * _third_person_look_speed
+		_third_person_pitch -= mm.relative.y * _third_person_look_speed
+		_third_person_pitch = clampf(_third_person_pitch, -PI * 0.45, PI * 0.45)
+		_update_third_person_transform()
 
 	if event is InputEventKey:
 		var ke := event as InputEventKey
 		if ke.pressed and ke.keycode == KEY_ESCAPE:
-			_fps_mouse_captured = not _fps_mouse_captured
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if _fps_mouse_captured else Input.MOUSE_MODE_VISIBLE
+			_mouse_captured = not _mouse_captured
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if _mouse_captured else Input.MOUSE_MODE_VISIBLE
+			
+	if event is InputEventMouseButton and _mouse_captured:
+		var mb := event as InputEventMouseButton
+		match mb.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				_third_person_distance = maxf(5.0, _third_person_distance - zoom_speed * 5.0)
+				_update_third_person_transform()
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_third_person_distance = minf(100.0, _third_person_distance + zoom_speed * 5.0)
+				_update_third_person_transform()
 
 
-func _fps_process(delta: float) -> void:
-	if projector == null or grid == null:
+func _third_person_process(_delta: float) -> void:
+	if projector == null or grid == null or player_character == null:
+		return
+		
+	if player_character.has_method("set_yaw"):
+		player_character.set_yaw(_third_person_yaw)
+		
+	_update_third_person_transform()
+
+
+func _update_third_person_transform() -> void:
+	if projector == null or grid == null or player_character == null:
 		return
 
-	var input_fwd := 0.0
-	var input_right := 0.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_fwd += 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_fwd -= 1.0
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		input_right -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		input_right += 1.0
+	var target_pos: Vector3 = player_character.global_position
+	var surface_up := target_pos.normalized()
 
-	var sprint := 1.0
-	if Input.is_key_pressed(KEY_SHIFT):
-		sprint = 3.0
-
-	if absf(input_fwd) < 0.01 and absf(input_right) < 0.01:
-		return
-
-	# Move directly in grid space — no expensive inverse mapping needed
-	var move_speed := _fps_move_speed * sprint * delta
-	var dx := sin(_fps_yaw) * input_fwd + cos(_fps_yaw) * input_right
-	var dy := -cos(_fps_yaw) * input_fwd + sin(_fps_yaw) * input_right
-
-	_fps_grid_pos.x = fmod(_fps_grid_pos.x + dx * move_speed + float(grid.width), float(grid.width))
-	_fps_grid_pos.y = clampf(_fps_grid_pos.y + dy * move_speed, 0.0, float(grid.height - 1))
-
-	_update_fps_transform()
-
-
-func _update_fps_transform() -> void:
-	if projector == null or grid == null:
-		return
-
-	var gx := _fps_grid_pos.x
-	var gy := _fps_grid_pos.y
-	var terrain_h := _sample_height_bilinear(gx, gy)
-	var surface_pos := projector.grid_to_sphere(gx, gy, terrain_h)
-	var surface_up_dir := surface_pos.normalized()
-	var world_pos := surface_pos + surface_up_dir * _fps_eye_height
-	var surface_up := world_pos.normalized()
-
-	var raw_forward := Vector3(sin(_fps_yaw), 0.0, -cos(_fps_yaw))
+	var raw_forward := Vector3(sin(_third_person_yaw), 0.0, -cos(_third_person_yaw))
 	var tangent_forward := (raw_forward - surface_up * raw_forward.dot(surface_up)).normalized()
-	var tangent_right := tangent_forward.cross(surface_up).normalized()
 
-	_fps_tangent_fwd = tangent_forward
-	_fps_tangent_right = tangent_right
-	_fps_surface_up = surface_up
-
-	var pitched_forward := tangent_forward * cos(_fps_pitch) + surface_up * sin(_fps_pitch)
+	var pitched_forward := tangent_forward * cos(_third_person_pitch) + surface_up * sin(_third_person_pitch)
 	pitched_forward = pitched_forward.normalized()
+	
+	var cam_pos := target_pos - pitched_forward * _third_person_distance
 
 	near = 0.02
-	global_position = world_pos
-	look_at(world_pos + pitched_forward, surface_up)
+	global_position = cam_pos
+	look_at(target_pos, surface_up)
 
 
 func _sample_height_bilinear(gx: float, gy: float) -> float:

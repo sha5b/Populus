@@ -7,7 +7,7 @@ const CELLS_PER_FACE := FACE_RES * FACE_RES * ALT_RES
 const TOTAL_CELLS := NUM_FACES * CELLS_PER_FACE
 
 const CHUNKS_PER_FACE := 8
-const CHUNK_SIZE: int = FACE_RES / CHUNKS_PER_FACE
+const CHUNK_SIZE: int = int(float(FACE_RES) / float(CHUNKS_PER_FACE))
 const TOTAL_CHUNKS := NUM_FACES * CHUNKS_PER_FACE * CHUNKS_PER_FACE
 
 const LAPSE_RATE := 6.5
@@ -87,12 +87,49 @@ func _init() -> void:
 	_coverage_noise.seed = 999
 
 
-func idx(face: int, fu: int, fv: int, alt: int) -> int:
-	var cf := clampi(face, 0, NUM_FACES - 1)
-	var cu := clampi(fu, 0, FACE_RES - 1)
-	var cv := clampi(fv, 0, FACE_RES - 1)
-	var ca := clampi(alt, 0, ALT_RES - 1)
-	return cf * CELLS_PER_FACE + (ca * FACE_RES + cv) * FACE_RES + cu
+func idx(in_face: int, in_u: int, in_v: int, in_alt: int) -> int:
+	var face := clampi(in_face, 0, NUM_FACES - 1)
+	var u := in_u
+	var v := in_v
+	var alt := clampi(in_alt, 0, ALT_RES - 1)
+	var limit := FACE_RES - 1
+
+	# Correct cube-sphere edge crossing topology
+	if u < 0:
+		if face == 0: face = 1; u = limit
+		elif face == 1: face = 0; u = limit
+		elif face == 2: face = 1; u = v; v = limit
+		elif face == 3: face = 1; u = limit - v; v = 0
+		elif face == 4: face = 1; u = limit - v; v = limit
+		elif face == 5: face = 1; u = v; v = 0
+	elif u > limit:
+		if face == 0: face = 4; u = 0
+		elif face == 1: face = 4; u = limit - v; v = limit
+		elif face == 2: face = 4; u = limit - v; v = 0
+		elif face == 3: face = 4; u = v; v = 0
+		elif face == 4: face = 0; u = 0
+		elif face == 5: face = 4; u = limit - v; v = limit
+
+	if v < 0:
+		if face == 0: face = 3; v = limit
+		elif face == 1: face = 3; v = limit - u; u = 0
+		elif face == 2: face = 1; v = u; u = limit
+		elif face == 3: face = 5; v = limit
+		elif face == 4: face = 3; v = u; u = limit
+		elif face == 5: face = 3; v = limit - u; u = 0
+	elif v > limit:
+		if face == 0: face = 2; v = 0
+		elif face == 1: face = 2; v = u; u = 0
+		elif face == 2: face = 0; v = 0
+		elif face == 3: face = 0; v = limit - u; u = 0
+		elif face == 4: face = 2; v = limit - u; u = limit
+		elif face == 5: face = 2; v = u; u = limit
+
+	# Fallback clamp if multiple corners crossed at once (corners are degenerate)
+	u = clampi(u, 0, limit)
+	v = clampi(v, 0, limit)
+
+	return face * CELLS_PER_FACE + (alt * FACE_RES + v) * FACE_RES + u
 
 
 func initialize_from_biome(_base_temp_map: PackedFloat32Array, base_moisture_map: PackedFloat32Array, grid_w: int, grid_h: int, proj: PlanetProjector) -> void:

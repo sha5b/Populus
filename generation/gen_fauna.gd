@@ -105,6 +105,12 @@ func _spawn_animal(world: EcsWorld, species_key: String, data: Dictionary, gx: i
 	energy.current = rng.randf_range(50.0, 100.0)
 	world.add_component(entity, energy)
 
+	var iq := ComIntelligence.new()
+	iq.iq = data.get("iq", 0.5)
+	# Roughly 1 in 10 chance to be a leader, we will refine this in SysHerd
+	iq.is_leader = (rng.randf() < 0.1)
+	world.add_component(entity, iq)
+
 	var ai := ComAiState.new()
 	var start_states := [DefEnums.AIState.WANDERING, DefEnums.AIState.FORAGING, DefEnums.AIState.WANDERING]
 	ai.current_state = start_states[rng.randi() % start_states.size()]

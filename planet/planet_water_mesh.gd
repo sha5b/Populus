@@ -53,12 +53,12 @@ func build_mesh() -> void:
 				depth_map[idx] = depth
 
 				var terrain_h := grid.get_height(gx, gy)
-				var water_surface := maxf(terrain_h + depth, GameConfig.SEA_LEVEL)
+				var water_surface := GameConfig.SEA_LEVEL if depth < 0.001 else (terrain_h + depth)
 
 				var equirect_dir := projector.grid_to_sphere(gf.x, gf.y).normalized()
 				var wave := clampf(water.wave_height[water.get_index(gx, gy)], -0.5, 0.5)
 				var r_scale := projector.radius / 100.0
-				var water_offset := (0.02 if depth < 0.05 else 0.005) * r_scale
+				var water_offset := (0.0 if depth < 0.001 else (0.02 if depth < 0.05 else 0.005)) * r_scale
 				var r := projector.radius + water_surface * projector.height_scale + wave * 0.3 * r_scale + water_offset
 
 				vert_data[idx] = {
@@ -76,9 +76,9 @@ func build_mesh() -> void:
 	var uvs := PackedVector2Array()
 	var indices := PackedInt32Array()
 
-	var remap := PackedInt32Array()
-	remap.resize(NUM_FACES * res1 * res1)
-	remap.fill(-1)
+	var vertex_remap := PackedInt32Array()
+	vertex_remap.resize(NUM_FACES * res1 * res1)
+	vertex_remap.fill(-1)
 
 	var vi := 0
 
@@ -101,8 +101,8 @@ func build_mesh() -> void:
 
 				# Ensure all 4 vertices are in the output
 				for ci in [i00, i10, i01, i11]:
-					if remap[ci] == -1:
-						remap[ci] = vi
+					if vertex_remap[ci] == -1:
+						vertex_remap[ci] = vi
 						var vd: Dictionary = vert_data[ci]
 						verts.append(vd["pos"])
 						normals.append(vd["nrm"])
@@ -110,12 +110,12 @@ func build_mesh() -> void:
 						uvs.append(vd["uv"])
 						vi += 1
 
-				indices.append(remap[i00])
-				indices.append(remap[i01])
-				indices.append(remap[i10])
-				indices.append(remap[i10])
-				indices.append(remap[i01])
-				indices.append(remap[i11])
+				indices.append(vertex_remap[i00])
+				indices.append(vertex_remap[i01])
+				indices.append(vertex_remap[i10])
+				indices.append(vertex_remap[i10])
+				indices.append(vertex_remap[i01])
+				indices.append(vertex_remap[i11])
 
 	if vi == 0:
 		mesh = null

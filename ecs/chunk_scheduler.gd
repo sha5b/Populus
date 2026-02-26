@@ -2,11 +2,11 @@ extends Node
 class_name ChunkScheduler
 
 const CHUNK_SIZE := 16
-var _grid_w: int = 128
-var _grid_h: int = 128
-var _chunks_x: int = 8
-var _chunks_y: int = 8
-var _total_chunks: int = 64
+var _grid_w: int
+var _grid_h: int
+var _chunks_x: int
+var _chunks_y: int
+var _total_chunks: int
 
 var _processors: Array[Callable] = []
 var _tick_index: int = 0
@@ -24,7 +24,9 @@ func setup(g: TorusGrid, chunks_per_frame: int = 4, tick_interval: float = 0.0) 
 	grid = g
 	_grid_w = g.width
 	_grid_h = g.height
+	@warning_ignore("integer_division")
 	_chunks_x = _grid_w / CHUNK_SIZE
+	@warning_ignore("integer_division")
 	_chunks_y = _grid_h / CHUNK_SIZE
 	_total_chunks = _chunks_x * _chunks_y
 	_chunks_per_frame = chunks_per_frame
@@ -40,13 +42,14 @@ func register_processor(callable: Callable) -> void:
 
 func set_camera_grid_pos(gx: float, gy: float) -> void:
 	_camera_chunk = Vector2i(
-		clampi(int(gx) / CHUNK_SIZE, 0, _chunks_x - 1),
-		clampi(int(gy) / CHUNK_SIZE, 0, _chunks_y - 1)
+		clampi(int(floor(gx / float(CHUNK_SIZE))), 0, _chunks_x - 1),
+		clampi(int(floor(gy / float(CHUNK_SIZE))), 0, _chunks_y - 1)
 	)
 
 
 func chunk_origin(chunk_idx: int) -> Vector2i:
 	var cx := chunk_idx % _chunks_x
+	@warning_ignore("integer_division")
 	var cy := chunk_idx / _chunks_x
 	return Vector2i(cx * CHUNK_SIZE, cy * CHUNK_SIZE)
 
@@ -75,6 +78,7 @@ func _process(delta: float) -> void:
 func _update_priority_scores() -> void:
 	for ci in range(_total_chunks):
 		var cx := ci % _chunks_x
+		@warning_ignore("integer_division")
 		var cy := ci / _chunks_x
 
 		var base_score := 1.0
@@ -82,8 +86,10 @@ func _update_priority_scores() -> void:
 		if _camera_chunk.x >= 0:
 			var dx := absi(cx - _camera_chunk.x)
 			var dy := absi(cy - _camera_chunk.y)
+			@warning_ignore("integer_division")
 			if dx > _chunks_x / 2:
 				dx = _chunks_x - dx
+			@warning_ignore("integer_division")
 			if dy > _chunks_y / 2:
 				dy = _chunks_y - dy
 			var dist := dx + dy

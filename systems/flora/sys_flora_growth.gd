@@ -2,6 +2,7 @@ extends System
 class_name SysFloraGrowth
 
 var grid: TorusGrid = null
+var water_grid: WaterGrid = null
 var moisture_map: PackedFloat32Array
 var temperature_map: PackedFloat32Array
 var time_system: SysTime = null
@@ -21,8 +22,9 @@ const STAGE_THRESHOLDS := {
 var _dead_queue: Array[int] = []
 
 
-func setup(p_grid: TorusGrid, p_moisture: PackedFloat32Array, p_temp: PackedFloat32Array, p_time: SysTime) -> void:
+func setup(p_grid: TorusGrid, w_grid: WaterGrid, p_moisture: PackedFloat32Array, p_temp: PackedFloat32Array, p_time: SysTime) -> void:
 	grid = p_grid
+	water_grid = w_grid
 	moisture_map = p_moisture
 	temperature_map = p_temp
 	time_system = p_time
@@ -58,7 +60,33 @@ func update(_world: Node, delta: float) -> void:
 			_dead_queue.append(eid)
 			continue
 
-		growth.age += years_per_tick
+		var pos: ComPosition = ecs.get_component(eid, "ComPosition") as ComPosition
+		var plant: ComPlantSpecies = ecs.get_component(eid, "ComPlantSpecies") as ComPlantSpecies
+
+		var local_fertility := 1.0
+		if pos and plant:
+			local_fertility = _get_fertility(pos, plant)
+			
+			# Modulate based on dynamic water depth
+			if water_grid:
+				var w_idx := pos.grid_y * water_grid.width + pos.grid_x
+				if w_idx >= 0 and w_idx < water_grid.water_depth.size():
+					var w_depth := water_grid.water_depth[w_idx]
+					var is_aquatic: bool = DefFlora.SPECIES_DATA.get(plant.species_name, {}).get("is_aquatic", false)
+					
+					if w_depth > 0.05 and not is_aquatic:
+						local_fertility = -0.5 # Terrestrial plants drown
+					elif is_aquatic and w_depth < 0.01:
+						local_fertility = -0.5 # Aquatic plants dry out
+					elif is_aquatic and w_depth >= 0.01:
+						local_fertility += 0.5 # Aquatic plants thrive
+
+		growth.age += years_per_tick * clampf(local_fertility, -1.0, 3.0)
+
+		# If fertility is negative and plant is young, it can die
+		if growth.age < 0.0:
+			growth.stage = DefEnums.GrowthStage.DEAD
+			continue
 
 		var age_frac := growth.age / growth.max_age if growth.max_age > 0.0 else 1.0
 		growth.growth_progress = clampf(age_frac, 0.0, 0.99)

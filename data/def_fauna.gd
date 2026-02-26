@@ -17,6 +17,7 @@ const SPECIES_DATA: Dictionary = {
 		"max_age": 300.0,
 		"flee_speed_bonus": 2.0,
 		"awareness_range": 12.0,
+		"iq": 0.5,
 	},
 	"wolf": {
 		"name": "Wolf",
@@ -35,6 +36,7 @@ const SPECIES_DATA: Dictionary = {
 		"hunt_range": 15.0,
 		"attack_damage": 12.0,
 		"prey_types": ["deer", "rabbit", "bison"],
+		"iq": 0.85,
 	},
 	"rabbit": {
 		"name": "Rabbit",
@@ -52,6 +54,7 @@ const SPECIES_DATA: Dictionary = {
 		"max_age": 100.0,
 		"flee_speed_bonus": 3.0,
 		"awareness_range": 10.0,
+		"iq": 0.4,
 	},
 	"bear": {
 		"name": "Bear",
@@ -70,6 +73,7 @@ const SPECIES_DATA: Dictionary = {
 		"hunt_range": 10.0,
 		"attack_damage": 25.0,
 		"prey_types": ["deer", "rabbit", "fish"],
+		"iq": 0.7,
 	},
 	"eagle": {
 		"name": "Eagle",
@@ -89,6 +93,7 @@ const SPECIES_DATA: Dictionary = {
 		"attack_damage": 8.0,
 		"prey_types": ["rabbit", "fish"],
 		"is_flying": true,
+		"iq": 0.6,
 	},
 	"fish": {
 		"name": "Fish",
@@ -106,6 +111,7 @@ const SPECIES_DATA: Dictionary = {
 		"max_age": 80.0,
 		"is_aquatic": true,
 		"mesh_color": Color(0.5, 0.55, 0.7),
+		"iq": 0.2,
 	},
 	"shark": {
 		"name": "Shark",
@@ -126,6 +132,7 @@ const SPECIES_DATA: Dictionary = {
 		"prey_types": ["fish", "sea_turtle"],
 		"is_aquatic": true,
 		"mesh_color": Color(0.45, 0.48, 0.52),
+		"iq": 0.6,
 	},
 	"whale": {
 		"name": "Whale",
@@ -143,6 +150,7 @@ const SPECIES_DATA: Dictionary = {
 		"max_age": 1000.0,
 		"is_aquatic": true,
 		"mesh_color": Color(0.3, 0.35, 0.45),
+		"iq": 0.8,
 	},
 	"jellyfish": {
 		"name": "Jellyfish",
@@ -163,6 +171,7 @@ const SPECIES_DATA: Dictionary = {
 		"prey_types": ["fish"],
 		"is_aquatic": true,
 		"mesh_color": Color(0.7, 0.5, 0.85, 0.6),
+		"iq": 0.1,
 	},
 	"crab": {
 		"name": "Crab",
@@ -180,6 +189,7 @@ const SPECIES_DATA: Dictionary = {
 		"max_age": 60.0,
 		"is_aquatic": true,
 		"mesh_color": Color(0.75, 0.35, 0.2),
+		"iq": 0.25,
 	},
 	"sea_turtle": {
 		"name": "Sea Turtle",
@@ -199,6 +209,7 @@ const SPECIES_DATA: Dictionary = {
 		"flee_speed_bonus": 1.0,
 		"awareness_range": 8.0,
 		"mesh_color": Color(0.3, 0.5, 0.25),
+		"iq": 0.5,
 	},
 	"bison": {
 		"name": "Bison",
@@ -216,5 +227,6 @@ const SPECIES_DATA: Dictionary = {
 		"max_age": 350.0,
 		"flee_speed_bonus": 1.5,
 		"awareness_range": 15.0,
+		"iq": 0.6,
 	},
 }

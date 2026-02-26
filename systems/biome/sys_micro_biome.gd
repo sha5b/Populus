@@ -40,7 +40,7 @@ func setup(
 	micro_biome_map.resize(total)
 	micro_biome_map.fill(DefMicroBiomes.MicroBiomeType.STANDARD)
 
-	var freq_scale := 128.0 / float(g.width)
+	var freq_scale := float(GameConfig.GRID_WIDTH) / float(g.width)
 	_coherence_noise = FastNoiseLite.new()
 	_coherence_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_coherence_noise.frequency = 0.06 * freq_scale
@@ -65,10 +65,13 @@ func _assign_chunk() -> void:
 	var w := grid.width
 	var total := w * grid.height
 	var end_idx := mini(_chunk_offset + CHUNK_SIZE, total)
-	for i in range(_chunk_offset, end_idx):
-		var x := i % w
-		var y := int(i / w)
-		micro_biome_map[i] = _classify_tile(x, y)
+	var to_process = end_idx - _chunk_offset
+	for i in range(to_process):
+		var idx := _chunk_offset + i
+		var x := idx % w
+		@warning_ignore("integer_division")
+		var y := idx / w
+		micro_biome_map[idx] = _classify_tile(x, y)
 	# Run majority filter on the chunk region to smooth edges
 	if end_idx >= total:
 		_majority_filter()
@@ -123,12 +126,12 @@ func _precompute_smooth_terrain() -> void:
 func _majority_filter() -> void:
 	var w := grid.width
 	var h := grid.height
-	var copy := micro_biome_map.duplicate()
+	var temp_map := micro_biome_map.duplicate()
 
 	for y in range(h):
 		for x in range(w):
 			var idx := y * w + x
-			var center := copy[idx]
+			var center := temp_map[idx]
 			if center == DefMicroBiomes.MicroBiomeType.STANDARD:
 				continue
 			if center == DefMicroBiomes.MicroBiomeType.RIPARIAN:
@@ -136,15 +139,14 @@ func _majority_filter() -> void:
 
 			# Count how many of the 8 neighbors share this micro-biome
 			var same := 0
-			var total := 0
+			var _neighbor_count := 0
 			for n in grid.get_neighbors_8(x, y):
 				var ni := n.y * w + n.x
-				total += 1
-				if copy[ni] == center:
+				if temp_map[ni] == center:
 					same += 1
-
-			# If fewer than 2 of 8 neighbors agree, revert to STANDARD
-			if same < 2:
+				_neighbor_count += 1
+			
+			if same < 3: # Isolated, revert to standard
 				micro_biome_map[idx] = DefMicroBiomes.MicroBiomeType.STANDARD
 
 
