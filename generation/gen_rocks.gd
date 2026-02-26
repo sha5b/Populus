@@ -1,6 +1,7 @@
 class_name GenRocks
 
 const ComRockScript = preload("res://components/com_rock.gd")
+const DefRocksScript = preload("res://data/def_rocks.gd")
 
 static func generate(world: EcsWorld, grid: TorusGrid, projector: PlanetProjector, _biome_map: PackedInt32Array) -> int:
 	var rng := RandomNumberGenerator.new()
@@ -44,8 +45,10 @@ static func generate(world: EcsWorld, grid: TorusGrid, projector: PlanetProjecto
 		world.add_component(eid, pos)
 
 		var rock := ComRockScript.new()
-		rock.rock_type = rng.randi() % 3 # Voxel variants
-		rock.scale = rng.randf_range(0.3, 1.5)
+		var type_keys := DefRocksScript.ROCK_DATA.keys()
+		rock.rock_type = type_keys[rng.randi() % type_keys.size()]
+		var data: Dictionary = DefRocksScript.ROCK_DATA[rock.rock_type]
+		rock.scale = rng.randf_range(data.get("scale_min", 0.5), data.get("scale_max", 2.0))
 		world.add_component(eid, rock)
 
 		count += 1
