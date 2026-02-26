@@ -22,3 +22,8 @@ func setup(planet_radius: float) -> void:
 func set_density(value: float) -> void:
 	if _material:
 		_material.set_shader_parameter("atmosphere_density", value)
+
+
+func set_sun_direction(dir: Vector3) -> void:
+	if _material:
+		_material.set_shader_parameter("sun_direction", dir)

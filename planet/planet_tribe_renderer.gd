@@ -90,10 +90,17 @@ func _setup_multimeshes() -> void:
 	add_child(_building_mesh)
 
 
-func _process(_delta: float) -> void:
+var _rebuild_timer: float = 0.0
+const REBUILD_INTERVAL: float = 0.5
+
+func _process(delta: float) -> void:
 	if ecs == null or projector == null:
 		return
-	_update_rendering()
+		
+	_rebuild_timer += delta
+	if _rebuild_timer >= REBUILD_INTERVAL:
+		_rebuild_timer = 0.0
+		_update_rendering()
 
 
 func _update_rendering() -> void:

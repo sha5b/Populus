@@ -290,6 +290,13 @@ func _add_camera_and_light() -> void:
 	light.shadow_enabled = true
 	add_child(light)
 
+	var moon_light := DirectionalLight3D.new()
+	moon_light.name = "MoonLight"
+	moon_light.light_color = Color(0.6, 0.7, 0.9)
+	moon_light.light_energy = 0.05
+	moon_light.shadow_enabled = true
+	add_child(moon_light)
+
 	var env := WorldEnvironment.new()
 	env.name = "WorldEnv"
 	var environment := Environment.new()
@@ -368,9 +375,13 @@ func _generate_terrain_step6_tribes() -> void:
 
 func _register_systems() -> void:
 	var sun := get_node("SunLight") as DirectionalLight3D
+	var moon := get_node("MoonLight") as DirectionalLight3D
+	var env := get_node("WorldEnv").environment as Environment
 
 	time_system = SysTime.new()
 	time_system.sun_light = sun
+	time_system.moon_light = moon
+	time_system.environment = env
 	world.add_system(time_system)
 	
 	var sys_climate = SysClimateScript.new()

@@ -29,6 +29,9 @@ const COVERAGE_MAP := {
 
 
 func update(_world: Node, delta: float) -> void:
+	if time_system and atmosphere_shell:
+		atmosphere_shell.set_sun_direction(time_system.sun_direction)
+
 	if weather_system == null:
 		return
 

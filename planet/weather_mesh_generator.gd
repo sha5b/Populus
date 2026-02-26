@@ -95,7 +95,7 @@ static func generate_fog_chunk(atmo: AtmosphereGrid, proj: PlanetProjector, face
 	var indices := PackedInt32Array()
 	
 	var has_fog := false
-	var fog_alt := 2.5
+	var fog_alt := 0.2
 	
 	for iv in range(cs + 1):
 		var fv := fv_start + iv

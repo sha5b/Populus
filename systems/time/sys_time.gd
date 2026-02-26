@@ -12,6 +12,8 @@ var _prev_day: int = 0
 var _prev_season: int = DefEnums.Season.SPRING
 
 var sun_light: DirectionalLight3D = null
+var moon_light: DirectionalLight3D = null
+var environment: Environment = null
 var day_night_energy: float = 1.2
 var sun_direction: Vector3 = Vector3(0, -1, 0)
 var is_night: bool = false
@@ -53,27 +55,59 @@ func _update_day_night() -> void:
 
 	# Sun elevation: 0h = nadir (-90°), 6h = horizon (0°), 12h = zenith (90°), 18h = horizon (0°)
 	# Maps 0-24h to a full rotation on X axis
-	var elevation_deg := (hour_frac / 24.0) * 360.0 - 90.0
+	var sun_elevation_deg := (hour_frac / 24.0) * 360.0 - 90.0
 	var axial_tilt_deg := 23.0
 	var seasonal_declination_deg := axial_tilt_deg * sin(year_phase)
-	sun_light.rotation_degrees = Vector3(elevation_deg, 30.0, seasonal_declination_deg)
+	sun_light.rotation_degrees = Vector3(sun_elevation_deg, 30.0, seasonal_declination_deg)
+	
+	if moon_light:
+		# Moon is opposite to the sun (simple implementation for now)
+		var moon_elevation_deg := sun_elevation_deg + 180.0
+		moon_light.rotation_degrees = Vector3(moon_elevation_deg, 30.0, -seasonal_declination_deg)
 
 	# Dawn/dusk coloring, night dimming
 	var day_t := 0.0
-	if hour_frac > 6.0 and hour_frac < 7.0:
-		day_t = (hour_frac - 6.0)
-	elif hour_frac >= 7.0 and hour_frac <= 19.0:
+	if hour_frac > 5.5 and hour_frac < 7.0: # Dawn
+		day_t = (hour_frac - 5.5) / 1.5
+	elif hour_frac >= 7.0 and hour_frac <= 17.5: # Day
 		day_t = 1.0
-	elif hour_frac > 19.0 and hour_frac < 20.0:
-		day_t = 1.0 - (hour_frac - 19.0)
+	elif hour_frac > 17.5 and hour_frac < 19.0: # Dusk
+		day_t = 1.0 - ((hour_frac - 17.5) / 1.5)
+		
+	# Smooth easing
+	day_t = smoothstep(0.0, 1.0, day_t)
 
-	day_night_energy = 1.2
-	sun_light.light_energy = 1.2
+	day_night_energy = lerpf(0.01, 1.2, day_t)
+	sun_light.light_energy = day_night_energy
+	
+	if moon_light:
+		var moon_energy := lerpf(0.05, 0.0, day_t)
+		moon_light.light_energy = moon_energy
 
 	sun_direction = -sun_light.global_transform.basis.z
-	is_night = day_t <= 0.001
-
-	sun_light.light_color = Color(1.0, 0.98, 0.95)
+	is_night = day_t <= 0.01
+	
+	# Color variations
+	var dusk_dawn_color := Color(1.0, 0.6, 0.3)
+	var noon_color := Color(1.0, 0.98, 0.95)
+	
+	var color_t := 1.0
+	if hour_frac > 5.5 and hour_frac < 8.0:
+		color_t = (hour_frac - 5.5) / 2.5
+	elif hour_frac > 16.5 and hour_frac < 19.0:
+		color_t = 1.0 - ((hour_frac - 16.5) / 2.5)
+	
+	color_t = smoothstep(0.0, 1.0, color_t)
+	sun_light.light_color = dusk_dawn_color.lerp(noon_color, color_t)
+	
+	if environment:
+		var day_ambient := Color(0.15, 0.15, 0.2)
+		var night_ambient := Color(0.02, 0.03, 0.06)
+		environment.ambient_light_color = night_ambient.lerp(day_ambient, day_t)
+		
+		var day_bg := Color(0.02, 0.02, 0.05)
+		var night_bg := Color(0.005, 0.005, 0.01)
+		environment.background_color = night_bg.lerp(day_bg, day_t)
 
 
 func _season_name(s: int) -> String:

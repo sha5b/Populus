@@ -1,7 +1,7 @@
 extends Node3D
 class_name PlanetCloudLayer
 
-const MAX_REBUILDS_PER_FRAME := 24
+const MAX_REBUILDS_PER_FRAME := 1
 const CLOUD_LOD_STEP := 2
 
 var _projector: PlanetProjector
