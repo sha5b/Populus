@@ -44,6 +44,7 @@ func update(_world: Node, delta: float) -> void:
 	for i in range(AtmosphereGrid.TOTAL_CELLS):
 		_old_density[i] = atmo_grid.cloud_density[i]
 
+	_resample_surface_climate()
 	_inject_surface_moisture()
 	_apply_global_wind()
 	_advection_step()
@@ -54,6 +55,64 @@ func update(_world: Node, delta: float) -> void:
 	_damp_winds()
 
 	_mark_changed_chunks()
+
+
+func _resample_surface_climate() -> void:
+	if weather_system == null or weather_system.grid == null:
+		return
+		
+	var proj = atmo_grid._projector
+	var gw = weather_system.grid.width
+	var gh = weather_system.grid.height
+	var temp_map = weather_system.temperature_map
+	var moist_map = weather_system.moisture_map
+	
+	if temp_map.is_empty() or moist_map.is_empty():
+		return
+		
+	for face in range(AtmosphereGrid.NUM_FACES):
+		for fv in range(AtmosphereGrid.FACE_RES):
+			for fu in range(AtmosphereGrid.FACE_RES):
+				var u_norm := (float(fu) + 0.5) / float(AtmosphereGrid.FACE_RES)
+				var v_norm := (float(fv) + 0.5) / float(AtmosphereGrid.FACE_RES)
+				var world_pos := proj.cube_sphere_point(face, u_norm, v_norm)
+				
+				# Get grid coordinates for bilinear sampling
+				var r := world_pos.length()
+				var lat := asin(clampf(world_pos.y / maxf(r, 0.001), -1.0, 1.0))
+				var lon := atan2(world_pos.z, world_pos.x)
+				if lon < 0.0:
+					lon += TAU
+				var gx := (lon / TAU) * float(gw)
+				var gy := ((lat + PI * 0.5) / PI) * float(gh)
+
+				var x0: int = int(floor(gx)) % gw
+				var y0: int = clampi(int(floor(gy)), 0, gh - 1)
+				var x1: int = (x0 + 1) % gw
+				var y1: int = clampi(y0 + 1, 0, gh - 1)
+				var fx: float = gx - float(floor(gx))
+				var fy: float = gy - float(floor(gy))
+
+				var v00: float = moist_map[y0 * gw + x0]
+				var v10: float = moist_map[y0 * gw + x1]
+				var v01: float = moist_map[y1 * gw + x0]
+				var v11: float = moist_map[y1 * gw + x1]
+				var base_m := lerpf(lerpf(v00, v10, fx), lerpf(v01, v11, fx), fy)
+				
+				var t00: float = temp_map[y0 * gw + x0]
+				var t10: float = temp_map[y0 * gw + x1]
+				var t01: float = temp_map[y1 * gw + x0]
+				var t11: float = temp_map[y1 * gw + x1]
+				var sim_t := lerpf(lerpf(t00, t10, fx), lerpf(t01, t11, fx), fy)
+				
+				# Temperature from simulation is 0-1, map to Celsius (-10 to 30)
+				var celsius_t := sim_t * 40.0 - 10.0
+				
+				var i := atmo_grid.idx(face, fu, fv, 0)
+				
+				# Slowly blend toward target to avoid shocking the fluid sim
+				atmo_grid.temperature[i] = lerpf(atmo_grid.temperature[i], celsius_t, 0.05)
+				atmo_grid.moisture[i] = lerpf(atmo_grid.moisture[i], base_m, 0.02)
 
 
 func _init_buffers() -> void:
