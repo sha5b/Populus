@@ -586,8 +586,9 @@ func _process(delta: float) -> void:
 	if _is_generating:
 		return
 	_mesh_rebuild_timer += delta
-	if _mesh_rebuild_timer >= _mesh_rebuild_interval:
+	if _mesh_rebuild_timer >= _mesh_rebuild_interval or grid.is_dirty:
 		_mesh_rebuild_timer = 0.0
+		grid.is_dirty = false
 		planet_mesh.set_biome_map(biome_map)
 		if GameConfig.USE_SWE_WATER and not swe_river_map.is_empty():
 			planet_mesh.set_river_map(swe_river_map)

@@ -4,7 +4,10 @@ var width: int
 var height: int
 var bedrock_height: PackedFloat32Array
 var sediment_depth: PackedFloat32Array
+var crust_plate: PackedInt32Array
 var biomes: PackedInt32Array
+
+var is_dirty: bool = false
 
 
 func _init(w: int = 128, h: int = 128) -> void:
@@ -18,6 +21,10 @@ func _init(w: int = 128, h: int = 128) -> void:
 	sediment_depth = PackedFloat32Array()
 	sediment_depth.resize(width * height)
 	sediment_depth.fill(0.0)
+	
+	crust_plate = PackedInt32Array()
+	crust_plate.resize(width * height)
+	crust_plate.fill(0)
 	
 	biomes = PackedInt32Array()
 	biomes.resize(width * height)

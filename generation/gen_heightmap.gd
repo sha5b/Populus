@@ -17,6 +17,8 @@ const SHELF_DROP := 0.18
 
 var _plate_centers: Array[Vector3] = []
 var _plate_is_continental: Array[bool] = []
+var _plate_axes: Array[Vector3] = []
+var _plate_speeds: Array[float] = []
 
 
 func _init(world_seed: int = 0) -> void:
@@ -94,11 +96,14 @@ func generate(grid: TorusGrid, proj: PlanetProjector = null) -> void:
 			var boundary_factor: float = plate_info[0]
 			var is_convergent: bool = plate_info[1]
 			var plate_continental: bool = plate_info[2]
+			var plate_id: int = plate_info[3]
 
 			continentalness_map[map_idx] = c
 			erosion_map[map_idx] = e
 			peaks_valleys_map[map_idx] = ridge
 			weirdness_map[map_idx] = weird
+			
+			grid.crust_plate[map_idx] = plate_id
 
 			var base_h := _continental_spline(c)
 
@@ -193,6 +198,8 @@ func _generate_plates() -> void:
 
 	_plate_centers.clear()
 	_plate_is_continental.clear()
+	_plate_axes.clear()
+	_plate_speeds.clear()
 
 	for i in range(NUM_PLATES):
 		var theta := rng.randf() * TAU
@@ -204,6 +211,37 @@ func _generate_plates() -> void:
 		).normalized()
 		_plate_centers.append(center)
 		_plate_is_continental.append(rng.randf() < 0.55)
+		
+		# Generate random rotation axis for the plate
+		var ax_theta := rng.randf() * TAU
+		var ax_z := rng.randf_range(-1.0, 1.0)
+		var ax_r := sqrt(maxf(1.0 - ax_z * ax_z, 0.0))
+		var axis := Vector3(ax_r * cos(ax_theta), ax_z, ax_r * sin(ax_theta)).normalized()
+		_plate_axes.append(axis)
+		
+		# Speed between 0.005 and 0.02 radians per tick
+		_plate_speeds.append(rng.randf_range(0.005, 0.02))
+
+
+func tick_tectonics(delta: float) -> void:
+	for i in range(NUM_PLATES):
+		var axis := _plate_axes[i]
+		var speed := _plate_speeds[i] * delta
+		var q := Quaternion(axis, speed)
+		_plate_centers[i] = q * _plate_centers[i]
+
+
+func get_plate_id(dir: Vector3) -> int:
+	var closest_dist := 999.0
+	var closest_idx := 0
+
+	for i in range(_plate_centers.size()):
+		var dist := dir.distance_to(_plate_centers[i])
+		if dist < closest_dist:
+			closest_dist = dist
+			closest_idx = i
+			
+	return closest_idx
 
 
 func _get_plate_info(dir: Vector3) -> Array:
@@ -232,7 +270,7 @@ func _get_plate_info(dir: Vector3) -> Array:
 	var both_oceanic := not _plate_is_continental[closest_idx] and not _plate_is_continental[second_idx]
 	var is_convergent := both_continental or (not both_oceanic and boundary_factor > 0.3)
 
-	return [boundary_factor, is_convergent, _plate_is_continental[closest_idx]]
+	return [boundary_factor, is_convergent, _plate_is_continental[closest_idx], closest_idx]
 
 
 func _make_noise(seed_val: int, freq: float, octaves: int, fractal: FastNoiseLite.FractalType) -> FastNoiseLite:
