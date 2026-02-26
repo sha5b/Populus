@@ -19,15 +19,15 @@ var sun_direction: Vector3 = Vector3(0, -1, 0)
 var is_night: bool = false
 
 
-func update(world: Node, delta: float) -> void:
+func update(_world: Node, delta: float) -> void:
 	game_time += delta * GameConfig.TIME_SCALE
 
 	var total_hours := int(game_time / 60.0)
 	hour = total_hours % GameConfig.HOURS_PER_DAY
-	day = int(total_hours / GameConfig.HOURS_PER_DAY)
-	var season_index := int(day / GameConfig.DAYS_PER_SEASON) % GameConfig.SEASONS_PER_YEAR
+	day = int(float(total_hours) / float(GameConfig.HOURS_PER_DAY))
+	var season_index := int(float(day) / float(GameConfig.DAYS_PER_SEASON)) % GameConfig.SEASONS_PER_YEAR
 	season = season_index
-	year = int(day / (GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR))
+	year = int(float(day) / float(GameConfig.DAYS_PER_SEASON * GameConfig.SEASONS_PER_YEAR))
 
 	if hour != _prev_hour:
 		_prev_hour = hour

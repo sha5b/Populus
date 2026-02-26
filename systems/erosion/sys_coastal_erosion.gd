@@ -5,11 +5,8 @@ var grid: TorusGrid = null
 var wind_system: SysWind = null
 var time_system: SysTime = null
 
-var wave_erosion_rate: float = 0.002
-var coastal_max_height: float = 0.1
-
-var _game_hours_acc: float = 0.0
-var _run_interval_hours: float = 12.0
+var erosion_rate: float = 0.05
+var coastal_max_height: float = 0.05
 
 const PATCH_SIZE := 16
 
@@ -42,34 +39,32 @@ func _erode_patch(px: int, py: int, size: int) -> void:
 
 			var is_coastal := false
 			for neighbor in grid.get_neighbors_4(x, y):
-				if grid.get_tile_center_height(neighbor.x, neighbor.y) < GameConfig.SEA_LEVEL:
+				if grid.get_height(neighbor.x, neighbor.y) <= GameConfig.SEA_LEVEL:
 					is_coastal = true
 					break
 
-			if not is_coastal:
-				continue
+			if is_coastal:
+				var erosion := erosion_rate * wind_speed
+				
+				var sed_here := grid.get_sediment(x, y)
+				if sed_here < erosion:
+					var bedrock_erode := (erosion - sed_here) * 0.3 # Coastal waves break bedrock decently
+					grid.set_bedrock(x, y, grid.get_bedrock(x, y) - bedrock_erode)
+					grid.set_sediment(x, y, 0.0)
+					erosion = sed_here + bedrock_erode
+				else:
+					grid.set_sediment(x, y, sed_here - erosion)
 
-			var erosion := wave_erosion_rate * wind_speed
-			
-			var sed_here := grid.get_sediment(x, y)
-			if sed_here < erosion:
-				var bedrock_erode := (erosion - sed_here) * 0.3 # Coastal waves break bedrock decently
-				grid.set_bedrock(x, y, grid.get_bedrock(x, y) - bedrock_erode)
-				grid.set_sediment(x, y, 0.0)
-				erosion = sed_here + bedrock_erode
-			else:
-				grid.set_sediment(x, y, sed_here - erosion)
-
-			var deepest_neighbor := Vector2i(-1, -1)
-			var deepest_h := 999.0
-			for neighbor in grid.get_neighbors_4(x, y):
-				var nh := grid.get_height(neighbor.x, neighbor.y)
-				if nh < deepest_h:
-					deepest_h = nh
-					deepest_neighbor = neighbor
-
-			if deepest_neighbor.x >= 0 and deepest_h < GameConfig.SEA_LEVEL:
-				grid.set_sediment(deepest_neighbor.x, deepest_neighbor.y, grid.get_sediment(deepest_neighbor.x, deepest_neighbor.y) + erosion * 0.5)
+				var deepest_neighbor := Vector2i(-1, -1)
+				var deepest_h := 999.0
+				for neighbor in grid.get_neighbors_4(x, y):
+					var nh := grid.get_height(neighbor.x, neighbor.y)
+					if nh < deepest_h:
+						deepest_h = nh
+						deepest_neighbor = neighbor
+						
+				if deepest_neighbor.x >= 0 and deepest_h < GameConfig.SEA_LEVEL:
+					grid.set_sediment(deepest_neighbor.x, deepest_neighbor.y, grid.get_sediment(deepest_neighbor.x, deepest_neighbor.y) + erosion * 0.5)
 
 
 func run_full_pass() -> void:

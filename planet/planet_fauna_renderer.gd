@@ -206,25 +206,31 @@ func _get_mesh(species_key: String) -> Mesh:
 	return quad
 
 
-func _get_letter_texture(species_key: String) -> ImageTexture:
+func _get_letter_texture(species_key: String) -> Texture2D:
 	if _texture_cache.has(species_key):
 		return _texture_cache[species_key]
+
+	var tex_size := 64
 	var letter: String = SPECIES_LETTER.get(species_key, "?")
 	var bg_color: Color = SPECIES_COLORS.get(species_key, Color.WHITE)
-	var tex_size := 64
+
 	var img := Image.create(tex_size, tex_size, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var center := tex_size / 2
-	var radius := tex_size / 2 - 2
+
+	var center := float(tex_size) / 2.0
+	var radius := float(tex_size) / 2.0 - 2.0
+
 	for py in range(tex_size):
 		for px in range(tex_size):
-			var dx := px - center
-			var dy := py - center
-			var dist := sqrt(float(dx * dx + dy * dy))
+			var dx := float(px) - center
+			var dy := float(py) - center
+			var dist := sqrt(dx * dx + dy * dy)
 			if dist < radius:
-				var edge := clampf(1.0 - (dist - float(radius - 2)) / 2.0, 0.0, 1.0)
+				var edge := clampf(1.0 - (dist - (radius - 2.0)) / 2.0, 0.0, 1.0)
 				img.set_pixel(px, py, Color(bg_color.r, bg_color.g, bg_color.b, 0.85 * edge))
+
 	_draw_letter_on_image(img, letter, tex_size)
+
 	var tex := ImageTexture.create_from_image(img)
 	_texture_cache[species_key] = tex
 	return tex
@@ -233,19 +239,20 @@ func _get_letter_texture(species_key: String) -> ImageTexture:
 func _draw_letter_on_image(img: Image, letter: String, tex_size: int) -> void:
 	var patterns := _get_letter_pattern(letter)
 	var grid_size := 5
-	var cell := tex_size / (grid_size + 2)
-	var ox := (tex_size - grid_size * cell) / 2
-	var oy := (tex_size - grid_size * cell) / 2
+	var cell := float(tex_size) / float(grid_size + 2)
+	var ox := (float(tex_size) - float(grid_size) * cell) / 2.0
+	var oy := (float(tex_size) - float(grid_size) * cell) / 2.0
+
 	for row in range(patterns.size()):
 		var line: String = patterns[row]
 		for col in range(line.length()):
 			if line[col] == "#":
-				for py in range(cell):
-					for px in range(cell):
-						var ix := ox + col * cell + px
-						var iy := oy + row * cell + py
-						if ix >= 0 and ix < tex_size and iy >= 0 and iy < tex_size:
-							img.set_pixel(ix, iy, Color.WHITE)
+				var cx := int(ox + col * cell)
+				var cy := int(oy + row * cell)
+				for y in range(cy, cy + int(cell)):
+					for x in range(cx, cx + int(cell)):
+						if x >= 0 and x < tex_size and y >= 0 and y < tex_size:
+							img.set_pixel(x, y, Color.WHITE)
 
 
 func _get_letter_pattern(letter: String) -> Array[String]:

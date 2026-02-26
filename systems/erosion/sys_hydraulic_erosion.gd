@@ -16,7 +16,6 @@ var particles_per_batch: int = 100
 
 var _game_hours_acc: float = 0.0
 var _run_interval_hours: float = 1.0
-var _total_particles: int = 0
 
 
 func setup(g: TorusGrid, ts: SysTime, ws: SysWeather = null) -> void:
