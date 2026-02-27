@@ -5,317 +5,115 @@ var grid: TorusGrid
 var projector: PlanetProjector
 var water: WaterGrid
 
-const MAX_LOD_LEVEL := 4
-const PATCH_RES := 16
-const SPLIT_FACTOR := 2.2
+const FACE_RES := 64
+const NUM_FACES := 6
+const CHUNKS_PER_FACE := 4
+const CHUNK_SIZE := 16 # FACE_RES / CHUNKS_PER_FACE
+const TOTAL_CHUNKS := NUM_FACES * CHUNKS_PER_FACE * CHUNKS_PER_FACE
 
-enum NodeState { EMPTY, BUILDING, READY }
-
-class QuadNode:
-	var id: int
-	var face: int
-	var level: int
-	var u_min: float
-	var v_min: float
-	var u_max: float
-	var v_max: float
-	var center: Vector3
-	var radius: float
-	
-	var is_split: bool = false
-	var children: Array[int] = []
-	
-	var mi: MeshInstance3D = null
-	var state: int = 0 # NodeState.EMPTY
-
-var _nodes: Dictionary = {}
-var _next_node_id: int = 1
-var _root_nodes: Array[int] = []
-
+var _chunk_meshes: Array[MeshInstance3D] = []
+var _is_rebuilding_chunk: PackedByteArray
+var _rebuild_index: int = 0
 var _material: Material
-var _camera_pos: Vector3 = Vector3.ZERO
+var _rebuild_accumulator: float = 0.0
+const REBUILDS_PER_SECOND: float = 24.0
 
-var _rebuild_queue: Array[int] = []
-var _pool: Array[MeshInstance3D] = []
-var _active_count := 0
-const MAX_CONCURRENT_BUILDS := 6
 
 func setup(g: TorusGrid, p: PlanetProjector, wg: WaterGrid) -> void:
 	grid = g
 	projector = p
 	water = wg
-	_create_root_nodes()
+
+	_chunk_meshes.resize(TOTAL_CHUNKS)
+	_is_rebuilding_chunk = PackedByteArray()
+	_is_rebuilding_chunk.resize(TOTAL_CHUNKS)
+	_is_rebuilding_chunk.fill(0)
+
+	for i in range(TOTAL_CHUNKS):
+		var mi := MeshInstance3D.new()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		_chunk_meshes[i] = mi
+
 
 func set_material(mat: Material) -> void:
 	_material = mat
-	for id in _nodes.keys():
-		var n: QuadNode = _nodes[id]
-		if n.mi:
-			n.mi.material_override = mat
+	for mi in _chunk_meshes:
+		if mi:
+			mi.material_override = mat
+
 
 func build_mesh() -> void:
-	for id in _nodes.keys():
-		var n: QuadNode = _nodes[id]
-		if n.state == NodeState.READY:
-			n.state = NodeState.EMPTY
-	_rebuild_queue.clear()
+	for ci in range(TOTAL_CHUNKS):
+		if _is_rebuilding_chunk[ci] == 0:
+			_is_rebuilding_chunk[ci] = 1
+			WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "WaterMeshChunk")
 
-# --- LOD LOGIC ---
 
-func _create_root_nodes() -> void:
-	for face in range(6):
-		var id := _create_node(face, 0, 0.0, 0.0, 1.0, 1.0)
-		_root_nodes.append(id)
-
-func _create_node(face: int, level: int, u0: float, v0: float, u1: float, v1: float) -> int:
-	var n := QuadNode.new()
-	n.id = _next_node_id
-	_next_node_id += 1
-	n.face = face
-	n.level = level
-	n.u_min = u0
-	n.v_min = v0
-	n.u_max = u1
-	n.v_max = v1
-	
-	var u_mid := (u0 + u1) * 0.5
-	var v_mid := (v0 + v1) * 0.5
-	n.center = _vertex_at_base(face, u_mid, v_mid)
-	var corner := _vertex_at_base(face, u0, v0)
-	n.radius = n.center.distance_to(corner) * 1.2
-	
-	_nodes[n.id] = n
-	return n.id
-
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if grid == null or projector == null or water == null:
 		return
-		
-	var cam := get_viewport().get_camera_3d()
-	if cam:
-		_camera_pos = cam.global_position
-		
-	_update_lod_tree()
-	_queue_rebuilds()
-	_update_tree_visibility()
 
-func _update_lod_tree() -> void:
-	if _camera_pos == Vector3.ZERO:
-		return
-	for root_id in _root_nodes:
-		_process_node(root_id)
-
-func _process_node(id: int) -> void:
-	var n: QuadNode = _nodes[id]
-	var dist := n.center.distance_to(_camera_pos)
+	_rebuild_accumulator += delta * REBUILDS_PER_SECOND
+	var rebuilds_to_do := int(_rebuild_accumulator)
 	
-	var should_split := (dist < n.radius * SPLIT_FACTOR) and (n.level < MAX_LOD_LEVEL)
-	if n.is_split and dist > n.radius * SPLIT_FACTOR * 1.1:
-		should_split = false # Hysteresis
-	
-	if should_split:
-		if not n.is_split:
-			_split_node(n)
-		for child_id in n.children:
-			_process_node(child_id)
-	else:
-		if n.is_split:
-			_merge_node(n)
+	if rebuilds_to_do > 0:
+		_rebuild_accumulator -= float(rebuilds_to_do)
+		rebuilds_to_do = mini(rebuilds_to_do, 4)
 
-func _split_node(n: QuadNode) -> void:
-	var u_mid := (n.u_min + n.u_max) * 0.5
-	var v_mid := (n.v_min + n.v_max) * 0.5
-	
-	n.children.append(_create_node(n.face, n.level + 1, n.u_min, n.v_min, u_mid, v_mid))
-	n.children.append(_create_node(n.face, n.level + 1, u_mid, n.v_min, n.u_max, v_mid))
-	n.children.append(_create_node(n.face, n.level + 1, n.u_min, v_mid, u_mid, n.v_max))
-	n.children.append(_create_node(n.face, n.level + 1, u_mid, v_mid, n.u_max, n.v_max))
-	n.is_split = true
+		for _i in range(rebuilds_to_do):
+			var ci := _rebuild_index
+			_rebuild_index = (_rebuild_index + 1) % TOTAL_CHUNKS
+			if _is_rebuilding_chunk[ci] == 0:
+				_is_rebuilding_chunk[ci] = 1
+				WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "WaterMeshChunk")
 
-func _merge_node(n: QuadNode) -> void:
-	for child_id in n.children:
-		_destroy_node_recursive(child_id)
-	n.children.clear()
-	n.is_split = false
 
-func _destroy_node_recursive(id: int) -> void:
-	var n: QuadNode = _nodes[id]
-	if n.is_split:
-		for child_id in n.children:
-			_destroy_node_recursive(child_id)
-	if n.mi:
-		_pool_mesh_instance(n.mi)
-		n.mi = null
-	
-	_rebuild_queue.erase(id)
-	_nodes.erase(id)
+func _rebuild_chunk_thread(ci: int) -> void:
+	@warning_ignore("integer_division")
+	var face: int = ci / (CHUNKS_PER_FACE * CHUNKS_PER_FACE)
+	var rem: int = ci % (CHUNKS_PER_FACE * CHUNKS_PER_FACE)
+	@warning_ignore("integer_division")
+	var cv: int = rem / CHUNKS_PER_FACE
+	var cu: int = rem % CHUNKS_PER_FACE
 
-func _queue_rebuilds() -> void:
-	for id in _nodes.keys():
-		var n: QuadNode = _nodes[id]
-		if not n.is_split and n.state == NodeState.EMPTY:
-			if not _rebuild_queue.has(id):
-				_rebuild_queue.append(id)
-	
-	while _active_count < MAX_CONCURRENT_BUILDS and _rebuild_queue.size() > 0:
-		var best_idx := -1
-		var best_dist := 9999999.0
-		for i in range(_rebuild_queue.size()):
-			var nid := _rebuild_queue[i]
-			if not _nodes.has(nid):
-				continue
-			var dist := _nodes[nid].center.distance_to(_camera_pos)
-			if dist < best_dist:
-				best_dist = dist
-				best_idx = i
-		
-		if best_idx == -1:
-			break
-			
-		var id := _rebuild_queue[best_idx]
-		_rebuild_queue.remove_at(best_idx)
-		
-		if not _nodes.has(id):
-			continue
-			
-		var n: QuadNode = _nodes[id]
-		n.state = NodeState.BUILDING
-		_active_count += 1
-		
-		var params = {
-			"id": id,
-			"face": n.face,
-			"u_min": n.u_min,
-			"v_min": n.v_min,
-			"u_max": n.u_max,
-			"v_max": n.v_max,
-			"level": n.level
-		}
-		WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(params), true, "WaterQuadMesh")
-
-func _update_tree_visibility() -> void:
-	for root_id in _root_nodes:
-		_update_node_visibility(_nodes[root_id])
-
-func _update_node_visibility(n: QuadNode) -> bool:
-	if not n.is_split:
-		if n.state == NodeState.READY:
-			if n.mi: n.mi.visible = true
-			return true
-		else:
-			if n.mi: n.mi.visible = false
-			return false
-	else:
-		var all_children_ready := true
-		for child_id in n.children:
-			if not _update_node_visibility(_nodes[child_id]):
-				all_children_ready = false
-		
-		if all_children_ready:
-			if n.mi: n.mi.visible = false
-			return true
-		else:
-			if n.state == NodeState.READY:
-				if n.mi: n.mi.visible = true
-				for child_id in n.children:
-					_hide_node_recursive(_nodes[child_id])
-				return true
-			else:
-				if n.mi: n.mi.visible = false
-				return false
-
-func _hide_node_recursive(n: QuadNode) -> void:
-	if n.mi: n.mi.visible = false
-	for child_id in n.children:
-		_hide_node_recursive(_nodes[child_id])
-
-func _get_mesh_instance() -> MeshInstance3D:
-	if _pool.size() > 0:
-		var mi = _pool.pop_back()
-		mi.visible = true
-		return mi
-	var mi := MeshInstance3D.new()
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	if _material:
-		mi.material_override = _material
-	add_child(mi)
-	return mi
-
-func _pool_mesh_instance(mi: MeshInstance3D) -> void:
-	mi.visible = false
-	mi.mesh = null
-	_pool.append(mi)
-
-# --- MESH GENERATION ---
-
-func _vertex_at_base(face: int, u: float, v: float) -> Vector3:
-	var cube_wp := projector.cube_sphere_point(face, u, v)
-	var gf := _world_to_grid_frac(cube_wp)
-	var gx := int(floor(gf.x)) % grid.width
-	var gy := clampi(int(floor(gf.y)), 0, grid.height - 1)
-	var depth := water.get_depth(gx, gy)
-	var terrain_h := grid.get_height(gx, gy)
-	var water_surface := GameConfig.SEA_LEVEL if depth < 0.001 else (terrain_h + depth)
-	var equirect_dir := projector.grid_to_sphere(gf.x, gf.y).normalized()
-	return equirect_dir * (projector.radius + water_surface * projector.height_scale)
-
-func _world_to_grid_frac(world_pos: Vector3) -> Vector2:
-	var r := world_pos.length()
-	if r < 0.001:
-		return Vector2.ZERO
-	var lat := asin(clampf(world_pos.y / r, -1.0, 1.0))
-	var lon := atan2(world_pos.z, world_pos.x)
-	if lon < 0.0:
-		lon += TAU
-	var gx := (lon / TAU) * float(grid.width)
-	var gy := ((lat + PI * 0.5) / PI) * float(grid.height)
-	return Vector2(gx, gy)
-
-func _rebuild_chunk_thread(params: Dictionary) -> void:
-	var id: int = params["id"]
-	var face: int = params["face"]
-	var u_min: float = params["u_min"]
-	var v_min: float = params["v_min"]
-	var u_max: float = params["u_max"]
-	var v_max: float = params["v_max"]
-	var level: int = params["level"]
-	
-	var res1 := PATCH_RES + 1
+	var res1 := CHUNK_SIZE + 1
 	var vert_data: Array[Dictionary] = []
 	vert_data.resize(res1 * res1)
 	var depth_map := PackedFloat32Array()
 	depth_map.resize(res1 * res1)
 
+	var u_start := cu * CHUNK_SIZE
+	var v_start := cv * CHUNK_SIZE
+
 	var idx := 0
 	for fv in range(res1):
-		var v_t := float(fv) / float(PATCH_RES)
-		var v := lerpf(v_min, v_max, v_t)
 		for fu in range(res1):
-			var u_t := float(fu) / float(PATCH_RES)
-			var u := lerpf(u_min, u_max, u_t)
-			
+			var u := float(u_start + fu) / float(FACE_RES)
+			var v := float(v_start + fv) / float(FACE_RES)
+
 			var cube_wp := projector.cube_sphere_point(face, u, v)
 			var gf := _world_to_grid_frac(cube_wp)
 			var gx := int(floor(gf.x)) % grid.width
 			var gy := clampi(int(floor(gf.y)), 0, grid.height - 1)
-			
+
 			var depth := water.get_depth(gx, gy)
 			depth_map[idx] = depth
-			
+
 			var terrain_h := grid.get_height(gx, gy)
 			var water_surface := GameConfig.SEA_LEVEL if depth < 0.001 else (terrain_h + depth)
+
 			var equirect_dir := projector.grid_to_sphere(gf.x, gf.y).normalized()
-			
 			var wave := clampf(water.wave_height[water.get_index(gx, gy)], -0.5, 0.5)
 			var r_scale := projector.radius / 100.0
 			var water_offset := (0.0 if depth < 0.001 else (0.02 if depth < 0.05 else 0.005)) * r_scale
 			var r := projector.radius + water_surface * projector.height_scale + wave * 0.3 * r_scale + water_offset
-			
+
 			vert_data[idx] = {
 				"pos": equirect_dir * r,
 				"nrm": equirect_dir,
 				"col": _water_color(gx, gy, depth),
-				"uv": Vector2(water.get_flow(gx, gy).x, water.get_flow(gx, gy).y)
+				"uv": Vector2(water.get_flow(gx, gy).x, water.get_flow(gx, gy).y),
 			}
 			idx += 1
 
@@ -330,8 +128,8 @@ func _rebuild_chunk_thread(params: Dictionary) -> void:
 	vertex_remap.fill(-1)
 
 	var vi := 0
-	for fv in range(PATCH_RES):
-		for fu in range(PATCH_RES):
+	for fv in range(CHUNK_SIZE):
+		for fu in range(CHUNK_SIZE):
 			var i00 := fv * res1 + fu
 			var i10 := i00 + 1
 			var i01 := i00 + res1
@@ -356,7 +154,6 @@ func _rebuild_chunk_thread(params: Dictionary) -> void:
 					uvs.append(vd["uv"])
 					vi += 1
 
-			# CCW Winding order to fix inside out mesh
 			indices.append(vertex_remap[i00])
 			indices.append(vertex_remap[i01])
 			indices.append(vertex_remap[i10])
@@ -373,28 +170,20 @@ func _rebuild_chunk_thread(params: Dictionary) -> void:
 		arrays[Mesh.ARRAY_TEX_UV] = uvs
 		arrays[Mesh.ARRAY_INDEX] = indices
 
-	_apply_chunk_mesh.call_deferred(id, arrays)
+	_apply_chunk_mesh.call_deferred(ci, arrays)
 
-func _apply_chunk_mesh(id: int, arrays: Array) -> void:
-	_active_count -= 1
-	if not _nodes.has(id):
-		return
-		
-	var n: QuadNode = _nodes[id]
-	if arrays.is_empty():
-		if n.mi:
-			_pool_mesh_instance(n.mi)
-			n.mi = null
-	else:
-		var arr_mesh := ArrayMesh.new()
-		arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		
-		if n.mi == null:
-			n.mi = _get_mesh_instance()
+
+func _apply_chunk_mesh(ci: int, arrays: Array) -> void:
+	if ci < _chunk_meshes.size() and _chunk_meshes[ci] != null:
+		if arrays.is_empty():
+			_chunk_meshes[ci].mesh = null
+		else:
+			var arr_mesh := ArrayMesh.new()
+			arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			_chunk_meshes[ci].mesh = arr_mesh
 			
-		n.mi.mesh = arr_mesh
-		
-	n.state = NodeState.READY
+	if ci < _is_rebuilding_chunk.size():
+		_is_rebuilding_chunk[ci] = 0
 
 
 func _water_color(gx: int, gy: int, depth: float) -> Color:
