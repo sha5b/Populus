@@ -13,7 +13,7 @@ const REBUILD_INTERVAL := 4.0
 const MAX_INSTANCES_PER_TYPE := 4096
 
 var _is_rebuilding: bool = false
-
+const _ComGrove = preload("res://components/com_grove.gd")
 
 func setup(proj: PlanetProjector, grid: TorusGrid, ecs: EcsWorld) -> void:
 	_projector = proj
@@ -30,6 +30,8 @@ func _process(delta: float) -> void:
 		_rebuild_all_async()
 
 
+var _rebuild_start_time: int = 0
+
 func _rebuild_all_async() -> void:
 	if _ecs == null or _projector == null:
 		return
@@ -41,14 +43,15 @@ func _rebuild_all_async() -> void:
 	var growths := _ecs.get_components("ComGrowth")
 	var positions := _ecs.get_components("ComPosition")
 	var flammables := _ecs.get_components("ComFlammable")
+	var groves := _ecs.get_components("ComGrove")
 
 	var keys := plants.keys()
-	var start_time := Time.get_ticks_msec()
+	_rebuild_start_time = Time.get_ticks_msec()
 
 	for eid in keys:
-		if Time.get_ticks_msec() - start_time > 4:
+		if Time.get_ticks_msec() - _rebuild_start_time > 4:
 			await get_tree().process_frame
-			start_time = Time.get_ticks_msec()
+			_rebuild_start_time = Time.get_ticks_msec()
 			if _ecs == null:
 				_is_rebuilding = false
 				return
@@ -59,6 +62,7 @@ func _rebuild_all_async() -> void:
 		var plant: ComPlantSpecies = plants[eid]
 		var growth: ComGrowth = growths[eid]
 		var pos: ComPosition = positions[eid]
+		var grove: _ComGrove = groves.get(eid) as _ComGrove
 
 		if growth.stage == DefEnums.GrowthStage.DEAD:
 			continue
@@ -82,16 +86,15 @@ func _rebuild_all_async() -> void:
 			"growth": growth,
 			"species": species_data,
 			"burning": is_burning,
+			"grove": grove,
+			"eid": eid
 		})
 
 	for type_key in by_type.keys():
-		if Time.get_ticks_msec() - start_time > 4:
-			await get_tree().process_frame
-			start_time = Time.get_ticks_msec()
-			if _ecs == null:
-				_is_rebuilding = false
-				return
-		_update_multimesh(type_key, by_type[type_key])
+		await _update_multimesh_async(type_key, by_type[type_key])
+		if _ecs == null:
+			_is_rebuilding = false
+			return
 
 	for type_key in _multimeshes.keys():
 		if not by_type.has(type_key):
@@ -101,66 +104,130 @@ func _rebuild_all_async() -> void:
 	_is_rebuilding = false
 
 
-func _update_multimesh(type_key: String, instances: Array) -> void:
+func _update_multimesh_async(type_key: String, instances: Array) -> void:
 	if not _multimeshes.has(type_key):
 		_create_multimesh_node(type_key)
 
 	var mmi: MultiMeshInstance3D = _multimeshes[type_key]
 	var mm: MultiMesh = mmi.multimesh
-	var count := mini(instances.size(), MAX_INSTANCES_PER_TYPE)
+	
+	# Calculate total instances to render
+	var total_instances := 0
+	for data in instances:
+		var grove: _ComGrove = data.get("grove")
+		if grove:
+			total_instances += grove.tree_count
+		else:
+			total_instances += 1
+			
+	var count := mini(total_instances, MAX_INSTANCES_PER_TYPE)
 	mm.instance_count = count
 
-	for i in range(count):
-		var data: Dictionary = instances[i]
+	var instance_idx := 0
+	for data in instances:
+		if instance_idx >= count:
+			break
+			
+		if Time.get_ticks_msec() - _rebuild_start_time > 4:
+			await get_tree().process_frame
+			_rebuild_start_time = Time.get_ticks_msec()
+			if _ecs == null:
+				return
+
 		var pos: ComPosition = data["pos"]
 		var growth: ComGrowth = data["growth"]
 		var species: Dictionary = data["species"]
 		var burning: bool = data["burning"]
+		var grove: _ComGrove = data["grove"]
+		var eid: int = data["eid"]
+		
+		var trees_to_spawn := 1
+		var radius := 0.0
+		if grove:
+			trees_to_spawn = grove.tree_count
+			radius = grove.radius
 
-		var wp: Vector3 = _get_surface_pos(pos)
+		for j in range(trees_to_spawn):
+			if instance_idx >= count:
+				break
+				
+			# Jitter the position within the grove radius
+			var offset_x := 0.0
+			var offset_y := 0.0
+			if trees_to_spawn > 1:
+				var hash_val := _jitter_hash(eid, j, 2)
+				var angle := hash_val * TAU
+				var r := sqrt(_jitter_hash(eid, j, 3)) * radius
+				offset_x = cos(angle) * r
+				offset_y = sin(angle) * r
 
-		var up := wp.normalized()
-		var mesh_height: float = species.get("mesh_height", 0.5)
-		var stage_scale := _stage_scale(growth.stage)
-		var planet_scale := GameConfig.PLANET_RADIUS / 100.0
-		var final_height := mesh_height * stage_scale * planet_scale
-		var width_scale := stage_scale * 0.4 * planet_scale
+			var wp: Vector3 = _get_surface_pos_offset(pos, offset_x, offset_y)
 
-		var t := Transform3D()
-		t = t.scaled(Vector3(width_scale, final_height, width_scale))
+			var up := wp.normalized()
+			var mesh_height: float = species.get("mesh_height", 0.5)
+			
+			# Vary height slightly per tree in grove
+			var height_variation := 1.0 + (_jitter_hash(eid, j, 4) - 0.5) * 0.4
+			var stage_scale := _stage_scale(growth.stage) * height_variation
+			var planet_scale := GameConfig.PLANET_RADIUS / 100.0
+			var final_height := mesh_height * stage_scale * planet_scale
+			var width_scale := stage_scale * 0.4 * planet_scale
 
-		var fwd := up.cross(Vector3.RIGHT)
-		if fwd.length_squared() < 0.001:
-			fwd = up.cross(Vector3.FORWARD)
-		fwd = fwd.normalized()
-		var right := fwd.cross(up).normalized()
-		t.basis = Basis(right, up, fwd) * t.basis
+			var t := Transform3D()
+			t = t.scaled(Vector3(width_scale, final_height, width_scale))
+			
+			var fwd := up.cross(Vector3.RIGHT)
+			if fwd.length_squared() < 0.001:
+				fwd = up.cross(Vector3.FORWARD)
+			fwd = fwd.normalized()
+			
+			# Add random rotation per tree
+			var rand_rot := _jitter_hash(eid, j, 5) * TAU
+			var local_right := fwd.cross(up).normalized()
+			var rot_fwd := fwd * cos(rand_rot) + local_right * sin(rand_rot)
+			var rot_right := rot_fwd.cross(up).normalized()
+			
+			t.basis = Basis(rot_right, up, rot_fwd) * t.basis
+			t.origin = wp
 
-		t.origin = wp
+			mm.set_instance_transform(instance_idx, t)
 
-		mm.set_instance_transform(i, t)
+			var base_color: Color = species.get("mesh_color", Color(0.3, 0.5, 0.2))
+			
+			# Add color variation per tree
+			var h_shift := (_jitter_hash(eid, j, 6) - 0.5) * 0.05
+			var s_shift := (_jitter_hash(eid, j, 7) - 0.5) * 0.1
+			var v_shift := (_jitter_hash(eid, j, 8) - 0.5) * 0.1
+			base_color = Color.from_hsv(
+				wrapf(base_color.h + h_shift, 0.0, 1.0),
+				clampf(base_color.s + s_shift, 0.0, 1.0),
+				clampf(base_color.v + v_shift, 0.0, 1.0)
+			)
 
-		var base_color: Color = species.get("mesh_color", Color(0.3, 0.5, 0.2))
+			if burning:
+				base_color = Color(0.9, 0.3, 0.1)
+			elif growth.stage == DefEnums.GrowthStage.SEED:
+				base_color = base_color.darkened(0.4)
+			elif growth.stage == DefEnums.GrowthStage.SAPLING:
+				base_color = base_color.lightened(0.1)
+			elif growth.stage == DefEnums.GrowthStage.OLD:
+				base_color = base_color.darkened(0.15)
 
-		if burning:
-			base_color = Color(0.9, 0.3, 0.1)
-		elif growth.stage == DefEnums.GrowthStage.SEED:
-			base_color = base_color.darkened(0.4)
-		elif growth.stage == DefEnums.GrowthStage.SAPLING:
-			base_color = base_color.lightened(0.1)
-		elif growth.stage == DefEnums.GrowthStage.OLD:
-			base_color = base_color.darkened(0.15)
-
-		mm.set_instance_color(i, base_color)
+			mm.set_instance_color(instance_idx, base_color)
+			instance_idx += 1
 
 
 func _get_surface_pos(pos: ComPosition) -> Vector3:
+	return _get_surface_pos_offset(pos, 0.0, 0.0)
+
+
+func _get_surface_pos_offset(pos: ComPosition, ox: float, oy: float) -> Vector3:
 	if _projector == null or _grid == null:
 		return Vector3.ZERO
 	var jx := _jitter_hash(pos.grid_x, pos.grid_y, 0) * 0.8
 	var jy := _jitter_hash(pos.grid_x, pos.grid_y, 1) * 0.8
-	var fx := float(pos.grid_x) + 0.1 + jx
-	var fy := float(pos.grid_y) + 0.1 + jy
+	var fx := float(pos.grid_x) + 0.1 + jx + ox
+	var fy := float(pos.grid_y) + 0.1 + jy + oy
 	var h := _sample_height_bilinear(fx, fy)
 	var dir := _projector.grid_to_sphere(fx, fy).normalized()
 	return dir * (_projector.radius + h * _projector.height_scale)

@@ -77,24 +77,20 @@ static func _try_place_land_flora(world: EcsWorld, grid: TorusGrid, proj: Planet
 	if valid_species.is_empty():
 		return 0
 
-	var spawned := 0
-	# Try to spawn multiple flora per tile based on density
-	var attempts := int(ceil(effective_density * 3.0))
-	for i in range(attempts):
-		if rng.randf() > effective_density:
-			continue
-			
-		# Use noise to bias species selection for natural patches of same species
-		var sp_noise := (_species_noise.get_noise_2d(float(x) * 2.0 + float(i), float(y) * 2.0 + float(i)) + 1.0) * 0.5
-		var sp_idx := int(sp_noise * float(valid_species.size())) % valid_species.size()
-		var species_key: String = valid_species[sp_idx]
+	# Instead of spawning up to 3 flora entities, we spawn a single Grove entity
+	# The effective density determines the number of trees in this grove
+	var grove_trees := int(ceil(effective_density * 5.0))
+	if grove_trees <= 0:
+		return 0
+
+	var sp_noise := (_species_noise.get_noise_2d(float(x) * 2.0, float(y) * 2.0) + 1.0) * 0.5
+	var sp_idx := int(sp_noise * float(valid_species.size())) % valid_species.size()
+	var species_key: String = valid_species[sp_idx]
+
+	_spawn_flora_grove(world, grid, proj, rng, x, y, height, species_key, grove_trees, 1.5)
 	
-		_spawn_flora_entity(world, grid, proj, rng, x, y, height, species_key)
-		spawned += 1
-		if spawned >= MAX_FLORA_PER_TILE:
-			break
-			
-	return spawned
+	# Returning the tree count instead of entity count so our limit still applies to logical tree counts
+	return grove_trees
 
 
 static func _try_place_aquatic_flora(world: EcsWorld, grid: TorusGrid, proj: PlanetProjector, rng: RandomNumberGenerator, x: int, y: int, height: float) -> int:
@@ -110,11 +106,14 @@ static func _try_place_aquatic_flora(world: EcsWorld, grid: TorusGrid, proj: Pla
 		return 0
 
 	var species_key: String = valid_species[rng.randi() % valid_species.size()]
-	_spawn_flora_entity(world, grid, proj, rng, x, y, height, species_key)
-	return 1
+	
+	var grove_trees := rng.randi_range(1, 3)
+	_spawn_flora_grove(world, grid, proj, rng, x, y, height, species_key, grove_trees, 0.8)
+	return grove_trees
 
+const _ComGrove = preload("res://components/com_grove.gd")
 
-static func _spawn_flora_entity(world: EcsWorld, _grid: TorusGrid, proj: PlanetProjector, rng: RandomNumberGenerator, x: int, y: int, height: float, species_key: String) -> void:
+static func _spawn_flora_grove(world: EcsWorld, _grid: TorusGrid, proj: PlanetProjector, rng: RandomNumberGenerator, x: int, y: int, height: float, species_key: String, tree_count: int, radius: float) -> void:
 	var species_data: Dictionary = DefFlora.SPECIES_DATA[species_key]
 	var entity := world.create_entity()
 
@@ -126,6 +125,11 @@ static func _spawn_flora_entity(world: EcsWorld, _grid: TorusGrid, proj: PlanetP
 		var fi := proj.world_to_cube_face(base)
 		pos.world_pos = proj.cube_sphere_point(fi[0], fi[1], fi[2], height * proj.height_scale)
 	world.add_component(entity, pos)
+	
+	var grove := _ComGrove.new()
+	grove.tree_count = tree_count
+	grove.radius = radius
+	world.add_component(entity, grove)
 
 	var plant := ComPlantSpecies.new()
 	plant.species_name = species_key
