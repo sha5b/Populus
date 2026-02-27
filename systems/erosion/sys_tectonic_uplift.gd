@@ -117,5 +117,8 @@ func _uplift_chunk() -> void:
 		if randf() < 0.05:
 			grid.crust_plate[i] = heightmap_gen.get_plate_id(dir)
 
-	grid.is_dirty = true
-	_chunk_offset = end_idx if end_idx < total else 0
+	if end_idx >= total:
+		_chunk_offset = 0
+		grid.is_dirty = true
+	else:
+		_chunk_offset = end_idx

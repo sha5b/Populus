@@ -86,12 +86,16 @@ func _process_chunk() -> void:
 		
 		_pressure_next[i] = clampf(diffused, 0.0, 1.0)
 
-	_chunk_offset = end_idx if end_idx < total else 0
-
 	for i in range(start_idx, end_idx):
 		magma_pressure[i] = _pressure_next[i]
 
 	_process_eruptions(start_idx, end_idx, w)
+	
+	if end_idx >= total:
+		_chunk_offset = 0
+		grid.is_dirty = true
+	else:
+		_chunk_offset = end_idx
 
 
 func _process_eruptions(start_idx: int, end_idx: int, w: int) -> void:

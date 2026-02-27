@@ -200,7 +200,7 @@ func _build_planet() -> void:
 	var terrain_mat := ShaderMaterial.new()
 	terrain_mat.shader = terrain_shader
 	terrain_mat.set_shader_parameter("planet_radius", GameConfig.PLANET_RADIUS)
-	planet_mesh.material_override = terrain_mat
+	planet_mesh.set_material(terrain_mat)
 
 	planet_mesh.build_mesh()
 	add_child(planet_mesh)
@@ -222,7 +222,7 @@ func _add_water_sphere() -> void:
 	water_mat.shader = water_shader
 	water_mat.render_priority = 1
 	water_mat.set_shader_parameter("planet_radius", GameConfig.PLANET_RADIUS)
-	water_mesh.material_override = water_mat
+	water_mesh.set_material(water_mat)
 
 	add_child(water_mesh)
 	water_mesh.build_mesh()
@@ -601,6 +601,8 @@ func _process(delta: float) -> void:
 		if micro_biome_system:
 			planet_mesh.set_micro_biome_map(micro_biome_system.micro_biome_map)
 		planet_mesh.build_mesh()
+		if water_mesh:
+			water_mesh.build_mesh()
 
 	if chunk_scheduler:
 		var cam := get_viewport().get_camera_3d()

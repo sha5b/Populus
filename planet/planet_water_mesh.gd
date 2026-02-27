@@ -1,14 +1,22 @@
-extends MeshInstance3D
+extends Node3D
 class_name PlanetWaterMesh
 
 var grid: TorusGrid
 var projector: PlanetProjector
 var water: WaterGrid
 
-var _rebuild_timer: float = 0.0
-const REBUILD_INTERVAL := 4.0
 const FACE_RES := 64
 const NUM_FACES := 6
+const CHUNKS_PER_FACE := 4
+const CHUNK_SIZE := 16 # FACE_RES / CHUNKS_PER_FACE
+const TOTAL_CHUNKS := NUM_FACES * CHUNKS_PER_FACE * CHUNKS_PER_FACE
+
+var _chunk_meshes: Array[MeshInstance3D] = []
+var _is_rebuilding_chunk: PackedByteArray
+var _rebuild_index: int = 0
+var _material: Material
+var _rebuild_accumulator: float = 0.0
+const REBUILDS_PER_SECOND: float = 24.0
 
 
 func setup(g: TorusGrid, p: PlanetProjector, wg: WaterGrid) -> void:
@@ -16,60 +24,99 @@ func setup(g: TorusGrid, p: PlanetProjector, wg: WaterGrid) -> void:
 	projector = p
 	water = wg
 
+	_chunk_meshes.resize(TOTAL_CHUNKS)
+	_is_rebuilding_chunk = PackedByteArray()
+	_is_rebuilding_chunk.resize(TOTAL_CHUNKS)
+	_is_rebuilding_chunk.fill(0)
 
-func _process(delta: float) -> void:
-	_rebuild_timer += delta
-	if _rebuild_timer < REBUILD_INTERVAL:
-		return
-	_rebuild_timer = 0.0
-	build_mesh()
+	for i in range(TOTAL_CHUNKS):
+		var mi := MeshInstance3D.new()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		_chunk_meshes[i] = mi
+
+
+func set_material(mat: Material) -> void:
+	_material = mat
+	for mi in _chunk_meshes:
+		if mi:
+			mi.material_override = mat
 
 
 func build_mesh() -> void:
+	for ci in range(TOTAL_CHUNKS):
+		if _is_rebuilding_chunk[ci] == 0:
+			_is_rebuilding_chunk[ci] = 1
+			WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "WaterMeshChunk")
+
+
+func _process(delta: float) -> void:
 	if grid == null or projector == null or water == null:
 		return
 
-	var res1 := FACE_RES + 1
+	_rebuild_accumulator += delta * REBUILDS_PER_SECOND
+	var rebuilds_to_do := int(_rebuild_accumulator)
+	
+	if rebuilds_to_do > 0:
+		_rebuild_accumulator -= float(rebuilds_to_do)
+		rebuilds_to_do = mini(rebuilds_to_do, 4)
 
-	# First pass: build vertex data and per-vertex depth for culling
+		for _i in range(rebuilds_to_do):
+			var ci := _rebuild_index
+			_rebuild_index = (_rebuild_index + 1) % TOTAL_CHUNKS
+			if _is_rebuilding_chunk[ci] == 0:
+				_is_rebuilding_chunk[ci] = 1
+				WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "WaterMeshChunk")
+
+
+func _rebuild_chunk_thread(ci: int) -> void:
+	@warning_ignore("integer_division")
+	var face: int = ci / (CHUNKS_PER_FACE * CHUNKS_PER_FACE)
+	var rem: int = ci % (CHUNKS_PER_FACE * CHUNKS_PER_FACE)
+	@warning_ignore("integer_division")
+	var cv: int = rem / CHUNKS_PER_FACE
+	var cu: int = rem % CHUNKS_PER_FACE
+
+	var res1 := CHUNK_SIZE + 1
 	var vert_data: Array[Dictionary] = []
-	vert_data.resize(NUM_FACES * res1 * res1)
+	vert_data.resize(res1 * res1)
 	var depth_map := PackedFloat32Array()
-	depth_map.resize(NUM_FACES * res1 * res1)
+	depth_map.resize(res1 * res1)
+
+	var u_start := cu * CHUNK_SIZE
+	var v_start := cv * CHUNK_SIZE
 
 	var idx := 0
-	for face in range(NUM_FACES):
-		for fv in range(res1):
-			for fu in range(res1):
-				var u := float(fu) / float(FACE_RES)
-				var v := float(fv) / float(FACE_RES)
+	for fv in range(res1):
+		for fu in range(res1):
+			var u := float(u_start + fu) / float(FACE_RES)
+			var v := float(v_start + fv) / float(FACE_RES)
 
-				var cube_wp := projector.cube_sphere_point(face, u, v)
-				var gf := _world_to_grid_frac(cube_wp)
-				var gx := int(floor(gf.x)) % grid.width
-				var gy := clampi(int(floor(gf.y)), 0, grid.height - 1)
+			var cube_wp := projector.cube_sphere_point(face, u, v)
+			var gf := _world_to_grid_frac(cube_wp)
+			var gx := int(floor(gf.x)) % grid.width
+			var gy := clampi(int(floor(gf.y)), 0, grid.height - 1)
 
-				var depth := water.get_depth(gx, gy)
-				depth_map[idx] = depth
+			var depth := water.get_depth(gx, gy)
+			depth_map[idx] = depth
 
-				var terrain_h := grid.get_height(gx, gy)
-				var water_surface := GameConfig.SEA_LEVEL if depth < 0.001 else (terrain_h + depth)
+			var terrain_h := grid.get_height(gx, gy)
+			var water_surface := GameConfig.SEA_LEVEL if depth < 0.001 else (terrain_h + depth)
 
-				var equirect_dir := projector.grid_to_sphere(gf.x, gf.y).normalized()
-				var wave := clampf(water.wave_height[water.get_index(gx, gy)], -0.5, 0.5)
-				var r_scale := projector.radius / 100.0
-				var water_offset := (0.0 if depth < 0.001 else (0.02 if depth < 0.05 else 0.005)) * r_scale
-				var r := projector.radius + water_surface * projector.height_scale + wave * 0.3 * r_scale + water_offset
+			var equirect_dir := projector.grid_to_sphere(gf.x, gf.y).normalized()
+			var wave := clampf(water.wave_height[water.get_index(gx, gy)], -0.5, 0.5)
+			var r_scale := projector.radius / 100.0
+			var water_offset := (0.0 if depth < 0.001 else (0.02 if depth < 0.05 else 0.005)) * r_scale
+			var r := projector.radius + water_surface * projector.height_scale + wave * 0.3 * r_scale + water_offset
 
-				vert_data[idx] = {
-					"pos": equirect_dir * r,
-					"nrm": equirect_dir,
-					"col": _water_color(gx, gy, depth),
-					"uv": Vector2(water.get_flow(gx, gy).x, water.get_flow(gx, gy).y),
-				}
-				idx += 1
+			vert_data[idx] = {
+				"pos": equirect_dir * r,
+				"nrm": equirect_dir,
+				"col": _water_color(gx, gy, depth),
+				"uv": Vector2(water.get_flow(gx, gy).x, water.get_flow(gx, gy).y),
+			}
+			idx += 1
 
-	# Second pass: only emit quads where at least one corner has water
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
@@ -77,61 +124,66 @@ func build_mesh() -> void:
 	var indices := PackedInt32Array()
 
 	var vertex_remap := PackedInt32Array()
-	vertex_remap.resize(NUM_FACES * res1 * res1)
+	vertex_remap.resize(res1 * res1)
 	vertex_remap.fill(-1)
 
 	var vi := 0
+	for fv in range(CHUNK_SIZE):
+		for fu in range(CHUNK_SIZE):
+			var i00 := fv * res1 + fu
+			var i10 := i00 + 1
+			var i01 := i00 + res1
+			var i11 := i01 + 1
 
-	for face in range(NUM_FACES):
-		var face_base := face * res1 * res1
-		for fv in range(FACE_RES):
-			for fu in range(FACE_RES):
-				var i00 := face_base + fv * res1 + fu
-				var i10 := i00 + 1
-				var i01 := i00 + res1
-				var i11 := i01 + 1
+			# Skip quad if ALL four corners are dry land
+			var d00 := depth_map[i00]
+			var d10 := depth_map[i10]
+			var d01 := depth_map[i01]
+			var d11 := depth_map[i11]
+			if d00 < 0.001 and d10 < 0.001 and d01 < 0.001 and d11 < 0.001:
+				continue
 
-				# Skip quad if ALL four corners are dry land
-				var d00 := depth_map[i00]
-				var d10 := depth_map[i10]
-				var d01 := depth_map[i01]
-				var d11 := depth_map[i11]
-				if d00 < 0.001 and d10 < 0.001 and d01 < 0.001 and d11 < 0.001:
-					continue
+			# Ensure all 4 vertices are in the output
+			for v_idx in [i00, i10, i01, i11]:
+				if vertex_remap[v_idx] == -1:
+					vertex_remap[v_idx] = vi
+					var vd: Dictionary = vert_data[v_idx]
+					verts.append(vd["pos"])
+					normals.append(vd["nrm"])
+					colors.append(vd["col"])
+					uvs.append(vd["uv"])
+					vi += 1
 
-				# Ensure all 4 vertices are in the output
-				for ci in [i00, i10, i01, i11]:
-					if vertex_remap[ci] == -1:
-						vertex_remap[ci] = vi
-						var vd: Dictionary = vert_data[ci]
-						verts.append(vd["pos"])
-						normals.append(vd["nrm"])
-						colors.append(vd["col"])
-						uvs.append(vd["uv"])
-						vi += 1
-
-				indices.append(vertex_remap[i00])
-				indices.append(vertex_remap[i01])
-				indices.append(vertex_remap[i10])
-				indices.append(vertex_remap[i10])
-				indices.append(vertex_remap[i01])
-				indices.append(vertex_remap[i11])
-
-	if vi == 0:
-		mesh = null
-		return
+			indices.append(vertex_remap[i00])
+			indices.append(vertex_remap[i01])
+			indices.append(vertex_remap[i10])
+			indices.append(vertex_remap[i10])
+			indices.append(vertex_remap[i01])
+			indices.append(vertex_remap[i11])
 
 	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_COLOR] = colors
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_INDEX] = indices
+	if vi > 0:
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_COLOR] = colors
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
+		arrays[Mesh.ARRAY_INDEX] = indices
 
-	var arr_mesh := ArrayMesh.new()
-	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh = arr_mesh
+	_apply_chunk_mesh.call_deferred(ci, arrays)
+
+
+func _apply_chunk_mesh(ci: int, arrays: Array) -> void:
+	if ci < _chunk_meshes.size() and _chunk_meshes[ci] != null:
+		if arrays.is_empty():
+			_chunk_meshes[ci].mesh = null
+		else:
+			var arr_mesh := ArrayMesh.new()
+			arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			_chunk_meshes[ci].mesh = arr_mesh
+			
+	if ci < _is_rebuilding_chunk.size():
+		_is_rebuilding_chunk[ci] = 0
 
 
 func _water_color(gx: int, gy: int, depth: float) -> Color:

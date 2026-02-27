@@ -1,4 +1,4 @@
-extends MeshInstance3D
+extends Node3D
 class_name PlanetMesh
 
 var grid: TorusGrid
@@ -12,6 +12,16 @@ var _color_noise2: FastNoiseLite
 
 const FACE_RES := 128
 const NUM_FACES := 6
+const CHUNKS_PER_FACE := 8
+const CHUNK_SIZE := 16 # FACE_RES / CHUNKS_PER_FACE
+const TOTAL_CHUNKS := NUM_FACES * CHUNKS_PER_FACE * CHUNKS_PER_FACE
+
+var _chunk_meshes: Array[MeshInstance3D] = []
+var _is_rebuilding_chunk: PackedByteArray
+var _rebuild_index: int = 0
+var _material: Material
+var _rebuild_accumulator: float = 0.0
+const REBUILDS_PER_SECOND: float = 12.0
 
 
 func setup(g: TorusGrid, p: PlanetProjector) -> void:
@@ -33,6 +43,24 @@ func setup(g: TorusGrid, p: PlanetProjector) -> void:
 	_color_noise2.frequency = 0.1 * freq_scale
 	_color_noise2.seed = 8888
 
+	_chunk_meshes.resize(TOTAL_CHUNKS)
+	_is_rebuilding_chunk = PackedByteArray()
+	_is_rebuilding_chunk.resize(TOTAL_CHUNKS)
+	_is_rebuilding_chunk.fill(0)
+
+	for i in range(TOTAL_CHUNKS):
+		var mi := MeshInstance3D.new()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(mi)
+		_chunk_meshes[i] = mi
+
+
+func set_material(mat: Material) -> void:
+	_material = mat
+	for mi in _chunk_meshes:
+		if mi:
+			mi.material_override = mat
+
 
 func set_biome_map(bm: PackedInt32Array) -> void:
 	biome_map = bm
@@ -46,43 +74,49 @@ func set_micro_biome_map(mbm: PackedInt32Array) -> void:
 	micro_biome_map = mbm
 
 
-var _is_building: bool = false
-var _thread_task_id: int = -1
-var _pending_arrays: Array = []
-
-
 func build_mesh() -> void:
-	if _is_building:
+	for ci in range(TOTAL_CHUNKS):
+		if _is_rebuilding_chunk[ci] == 0:
+			_is_rebuilding_chunk[ci] = 1
+			WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "PlanetMeshChunk")
+
+
+func _process(delta: float) -> void:
+	if grid == null or projector == null:
 		return
-	_is_building = true
+
+	_rebuild_accumulator += delta * REBUILDS_PER_SECOND
+	var rebuilds_to_do := int(_rebuild_accumulator)
 	
-	# Dispatch to worker thread
-	_thread_task_id = WorkerThreadPool.add_task(_build_mesh_thread.bind(), true, "PlanetMeshBuilder")
+	if rebuilds_to_do > 0:
+		_rebuild_accumulator -= float(rebuilds_to_do)
+		# Cap at a reasonable number per frame to avoid spikes
+		rebuilds_to_do = mini(rebuilds_to_do, 4)
+
+		for _i in range(rebuilds_to_do):
+			var ci := _rebuild_index
+			_rebuild_index = (_rebuild_index + 1) % TOTAL_CHUNKS
+			if _is_rebuilding_chunk[ci] == 0:
+				_is_rebuilding_chunk[ci] = 1
+				WorkerThreadPool.add_task(_rebuild_chunk_thread.bind(ci), true, "PlanetMeshChunk")
 
 
-func _process(_delta: float) -> void:
-	if _is_building and _thread_task_id != -1:
-		if WorkerThreadPool.is_task_completed(_thread_task_id):
-			WorkerThreadPool.wait_for_task_completion(_thread_task_id)
-			_thread_task_id = -1
-			_apply_mesh_arrays(_pending_arrays)
-			_pending_arrays.clear()
-			_is_building = false
+func _rebuild_chunk_thread(ci: int) -> void:
+	@warning_ignore("integer_division")
+	var face: int = ci / (CHUNKS_PER_FACE * CHUNKS_PER_FACE)
+	var rem: int = ci % (CHUNKS_PER_FACE * CHUNKS_PER_FACE)
+	@warning_ignore("integer_division")
+	var cv: int = rem / CHUNKS_PER_FACE
+	var cu: int = rem % CHUNKS_PER_FACE
 
-
-func _build_mesh_thread() -> void:
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-
-	var res1 := FACE_RES + 1
-	var verts_per_face := res1 * res1
-	var total_verts := NUM_FACES * verts_per_face
-	var total_indices := NUM_FACES * FACE_RES * FACE_RES * 6
-
+	var res1 := CHUNK_SIZE + 1
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
+	
+	var total_verts := res1 * res1
+	var total_indices := CHUNK_SIZE * CHUNK_SIZE * 6
 	verts.resize(total_verts)
 	normals.resize(total_verts)
 	colors.resize(total_verts)
@@ -90,52 +124,57 @@ func _build_mesh_thread() -> void:
 
 	var vi := 0
 	var ii := 0
+	
+	var u_start := cu * CHUNK_SIZE
+	var v_start := cv * CHUNK_SIZE
 
-	for face in range(NUM_FACES):
-		var face_base := vi
-		for fv in range(res1):
-			for fu in range(res1):
-				var u := float(fu) / float(FACE_RES)
-				var v := float(fv) / float(FACE_RES)
-				var pos := _vertex_at(face, u, v)
-				verts[vi] = pos
-				normals[vi] = pos.normalized()
-				var gf := _world_to_grid_frac(projector.cube_sphere_point(face, u, v))
-				colors[vi] = _sample_color_blended(gf)
-				vi += 1
+	for fv in range(res1):
+		for fu in range(res1):
+			var u := float(u_start + fu) / float(FACE_RES)
+			var v := float(v_start + fv) / float(FACE_RES)
+			var pos := _vertex_at(face, u, v)
+			verts[vi] = pos
+			normals[vi] = pos.normalized()
+			var gf := _world_to_grid_frac(projector.cube_sphere_point(face, u, v))
+			colors[vi] = _sample_color_blended(gf)
+			vi += 1
 
-		for fv in range(FACE_RES):
-			for fu in range(FACE_RES):
-				var i00 := face_base + fv * res1 + fu
-				var i10 := i00 + 1
-				var i01 := i00 + res1
-				var i11 := i01 + 1
-				indices[ii] = i00
-				indices[ii + 1] = i01
-				indices[ii + 2] = i10
-				indices[ii + 3] = i10
-				indices[ii + 4] = i01
-				indices[ii + 5] = i11
-				ii += 6
+	for fv in range(CHUNK_SIZE):
+		for fu in range(CHUNK_SIZE):
+			var i00 := fv * res1 + fu
+			var i10 := i00 + 1
+			var i01 := i00 + res1
+			var i11 := i01 + 1
+			indices[ii] = i00
+			indices[ii + 1] = i01
+			indices[ii + 2] = i10
+			indices[ii + 3] = i10
+			indices[ii + 4] = i01
+			indices[ii + 5] = i11
+			ii += 6
 
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_INDEX] = indices
 
-	_pending_arrays = arrays
+	_apply_chunk_mesh.call_deferred(ci, arrays)
 
 
-func _apply_mesh_arrays(arrays: Array) -> void:
-	if arrays.is_empty():
-		return
-	var arr_mesh := ArrayMesh.new()
-	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh = arr_mesh
+func _apply_chunk_mesh(ci: int, arrays: Array) -> void:
+	if ci < _chunk_meshes.size() and _chunk_meshes[ci] != null:
+		var arr_mesh := ArrayMesh.new()
+		arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		_chunk_meshes[ci].mesh = arr_mesh
+	if ci < _is_rebuilding_chunk.size():
+		_is_rebuilding_chunk[ci] = 0
 
 
 func update_region(_cx: int, _cy: int, _radius_tiles: int) -> void:
-	build_mesh()
+	pass # Deprecated, handled automatically
+
 
 
 func _sample_height_bilinear(fx: float, fy: float) -> float:
@@ -318,14 +357,16 @@ func _blend_biome_edges(center_col: Color, gx: int, gy: int, idx: int) -> Color:
 	var diff_g := 0.0
 	var diff_b := 0.0
 
-	for n in grid.get_neighbors_4(gx, gy):
-		var ni := n.y * w + n.x
+	for i in range(4):
+		var n_x := grid.wrap_x(gx + TorusGrid.DIR_X[i])
+		var n_y := grid.wrap_y(gy + TorusGrid.DIR_Y[i])
+		var ni := n_y * w + n_x
 		if ni < 0 or ni >= biome_map.size():
 			continue
 		if biome_map[ni] != center_biome:
 			diff_count += 1
-			var nh := grid.get_height(n.x, n.y)
-			var ncol := _get_biome_color_varied(n.x, n.y, ni, nh)
+			var nh := grid.get_height(n_x, n_y)
+			var ncol := _get_biome_color_varied(n_x, n_y, ni, nh)
 			diff_r += ncol.r
 			diff_g += ncol.g
 			diff_b += ncol.b
@@ -351,8 +392,10 @@ func _get_river_proximity(gx: int, gy: int) -> float:
 		return 0.0
 	var w := grid.width
 	var max_strength := 0.0
-	for n in grid.get_neighbors_4(gx, gy):
-		var ni := n.y * w + n.x
+	for i in range(4):
+		var nx := grid.wrap_x(gx + TorusGrid.DIR_X[i])
+		var ny := grid.wrap_y(gy + TorusGrid.DIR_Y[i])
+		var ni := ny * w + nx
 		if ni >= 0 and ni < river_map.size():
 			max_strength = maxf(max_strength, river_map[ni])
 	return clampf(max_strength, 0.0, 1.0)
