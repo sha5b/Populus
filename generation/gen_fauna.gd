@@ -35,17 +35,12 @@ func generate(world: EcsWorld, g: TorusGrid, proj: PlanetProjector, biome_map: P
 			var herd_id := next_herd_id
 			next_herd_id += 1
 
-			for _m in range(herd_size):
-				if spawned >= MAX_PER_SPECIES:
-					break
-				var tx := grid.wrap_x(center.x + rng.randi_range(-2, 2))
-				var ty := grid.wrap_y(center.y + rng.randi_range(-2, 2))
-				_spawn_animal(world, species_key, data, tx, ty, herd_id)
-				spawned += 1
+			_spawn_herd(world, species_key, data, center.x, center.y, herd_id, herd_size)
+			spawned += herd_size
 
 			valid_tiles.remove_at(center_idx)
 
-		print("Fauna: spawned %d %s" % [spawned, species_key])
+		print("Fauna: spawned %d %s (in %d herds)" % [spawned, species_key, next_herd_id])
 
 
 func _find_valid_tiles(biome_map: PackedInt32Array, preferred: Array, is_aquatic: bool) -> Array[Vector2i]:
@@ -69,7 +64,7 @@ func _find_valid_tiles(biome_map: PackedInt32Array, preferred: Array, is_aquatic
 	return tiles
 
 
-func _spawn_animal(world: EcsWorld, species_key: String, data: Dictionary, gx: int, gy: int, herd_id: int) -> void:
+func _spawn_herd(world: EcsWorld, species_key: String, data: Dictionary, gx: int, gy: int, herd_id: int, count: int) -> void:
 	var entity := world.create_entity()
 
 	var pos := ComPosition.new()
@@ -79,6 +74,12 @@ func _spawn_animal(world: EcsWorld, species_key: String, data: Dictionary, gx: i
 	var dir := projector.grid_to_sphere(float(gx) + 0.5, float(gy) + 0.5).normalized()
 	pos.world_pos = dir * (projector.radius + h * projector.height_scale)
 	world.add_component(entity, pos)
+
+	var herd := ComHerd.new()
+	herd.herd_id = herd_id
+	herd.count = count
+	herd.radius = maxf(1.5, sqrt(float(count)) * 0.5)
+	world.add_component(entity, herd)
 
 	var species := ComFaunaSpecies.new()
 	species.species_key = species_key
@@ -122,10 +123,6 @@ func _spawn_animal(world: EcsWorld, species_key: String, data: Dictionary, gx: i
 	repro.gestation_period = data["gestation"]
 	repro.offspring_count = data["offspring_count"]
 	world.add_component(entity, repro)
-
-	var herd := ComHerd.new()
-	herd.herd_id = herd_id
-	world.add_component(entity, herd)
 
 	if data["diet"] == DefEnums.DietType.CARNIVORE or data["diet"] == DefEnums.DietType.OMNIVORE:
 		var pred := ComPredator.new()

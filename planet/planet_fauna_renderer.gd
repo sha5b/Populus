@@ -126,7 +126,8 @@ func _rebuild_all_async() -> void:
 		var species: ComFaunaSpecies = fauna_comps[eid]
 		var pos: ComPosition = positions[eid]
 		var ai: ComAiState = ai_states.get(eid) as ComAiState
-
+		var herd: ComHerd = _ecs.get_component(eid, "ComHerd") as ComHerd
+		
 		var key := species.species_key
 		if not by_species.has(key):
 			by_species[key] = []
@@ -135,6 +136,8 @@ func _rebuild_all_async() -> void:
 			"pos": pos,
 			"species": species,
 			"ai": ai,
+			"herd": herd,
+			"eid": eid
 		})
 
 	# Render all species found + hide any that vanished
@@ -156,7 +159,17 @@ func _rebuild_all_async() -> void:
 			_set_instance_count(key, 0)
 			continue
 		var instances: Array = by_species[key]
-		var count := mini(instances.size(), MAX_INSTANCES_PER_TYPE)
+		
+		# Calculate total instances required for this species (summing herd counts)
+		var total_instances := 0
+		for data in instances:
+			var h: ComHerd = data.get("herd")
+			if h:
+				total_instances += h.count
+			else:
+				total_instances += 1
+				
+		var count := mini(total_instances, MAX_INSTANCES_PER_TYPE)
 		var mm := _get_or_create_multimesh(key, count)
 		_update_instances(mm, instances, key, count)
 
@@ -215,11 +228,8 @@ func _get_letter_texture(species_key: String) -> Texture2D:
 	var bg_color: Color = SPECIES_COLORS.get(species_key, Color.WHITE)
 
 	var img := Image.create(tex_size, tex_size, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-
 	var center := float(tex_size) / 2.0
 	var radius := float(tex_size) / 2.0 - 2.0
-
 	for py in range(tex_size):
 		for px in range(tex_size):
 			var dx := float(px) - center
@@ -227,7 +237,9 @@ func _get_letter_texture(species_key: String) -> Texture2D:
 			var dist := sqrt(dx * dx + dy * dy)
 			if dist < radius:
 				var edge := clampf(1.0 - (dist - (radius - 2.0)) / 2.0, 0.0, 1.0)
-				img.set_pixel(px, py, Color(bg_color.r, bg_color.g, bg_color.b, 0.85 * edge))
+				img.set_pixel(px, py, Color(bg_color.r, bg_color.g, bg_color.b, edge))
+			else:
+				img.set_pixel(px, py, Color(0, 0, 0, 0))
 
 	_draw_letter_on_image(img, letter, tex_size)
 
@@ -249,46 +261,52 @@ func _draw_letter_on_image(img: Image, letter: String, tex_size: int) -> void:
 			if line[col] == "#":
 				var cx := int(ox + col * cell)
 				var cy := int(oy + row * cell)
-				for y in range(cy, cy + int(cell)):
-					for x in range(cx, cx + int(cell)):
-						if x >= 0 and x < tex_size and y >= 0 and y < tex_size:
-							img.set_pixel(x, y, Color.WHITE)
+				for py in range(cy, cy + int(cell)):
+					for px in range(cx, cx + int(cell)):
+						img.set_pixel(px, py, Color.WHITE)
 
 
 func _get_letter_pattern(letter: String) -> Array[String]:
 	match letter:
-		"D": return ["###.", "#..#", "#..#", "#..#", "###."]
-		"W": return ["#..#", "#..#", "#.##", "##.#", "#..#"]
-		"R": return ["###.", "#..#", "###.", "#.#.", "#..#"]
-		"B": return ["###.", "#..#", "###.", "#..#", "###."]
-		"E": return ["####", "#...", "###.", "#...", "####"]
-		"F": return ["####", "#...", "###.", "#...", "#..."]
-		"N": return ["#..#", "##.#", "#.##", "#..#", "#..#"]
-		"S": return [".###", "#...", ".##.", "...#", "###."]
-		"H": return ["#..#", "#..#", "####", "#..#", "#..#"]
-		"J": return ["..##", "...#", "...#", "#..#", ".##."]
-		"C": return [".###", "#...", "#...", "#...", ".###"]
-		"T": return ["####", ".#..", ".#..", ".#..", ".#.."]
-		_: return ["####", "#..#", "#..#", "#..#", "####"]
+		"D":
+			return ["###  ", "#  # ", "#  # ", "#  # ", "###  "]
+		"W":
+			return ["#   #", "#   #", "# # #", "## ##", "#   #"]
+		"R":
+			return ["#### ", "#   #", "#### ", "#  # ", "#   #"]
+		"B":
+			return ["#### ", "#   #", "#### ", "#   #", "#### "]
+		"E":
+			return ["#### ", "#    ", "###  ", "#    ", "#### "]
+		"F":
+			return ["#### ", "#    ", "###  ", "#    ", "#    "]
+		"S":
+			return [" ####", "#    ", " ### ", "    #", "#### "]
+		_:
+			return ["#####", "#   #", "#   #", "#   #", "#####"]
 
 
 func _update_instances(mm: MultiMesh, instances: Array, species_key: String, count: int) -> void:
 	var base_color: Color = SPECIES_COLORS.get(species_key, Color.WHITE)
-
-	for i in range(count):
-		var data: Dictionary = instances[i]
+	
+	var instance_idx := 0
+	for data in instances:
+		if instance_idx >= count:
+			break
+			
 		var pos: ComPosition = data["pos"]
 		var species: ComFaunaSpecies = data["species"]
 		var ai: ComAiState = data["ai"]
-
-		var wp := _get_interpolated_pos(pos, species)
-		var up := wp.normalized()
-		var sz: float = SPRITE_SIZE.get(species_key, 1.0)
-		var t := Transform3D()
-		t.origin = wp + up * sz * 0.6
-
-		mm.set_instance_transform(i, t)
-
+		var herd: ComHerd = data["herd"]
+		var eid: int = data["eid"]
+		
+		var animals_to_spawn := 1
+		var radius := 0.0
+		if herd:
+			animals_to_spawn = herd.count
+			radius = herd.radius
+			
+		# Determine base color modifiers from AI state
 		var col := base_color
 		if ai != null:
 			match ai.current_state:
@@ -300,8 +318,59 @@ func _update_instances(mm: MultiMesh, instances: Array, species_key: String, cou
 					col = base_color.darkened(0.4)
 				DefEnums.AIState.MATING:
 					col = base_color.lerp(Color.MAGENTA, 0.3)
-		mm.set_instance_color(i, col)
 
+		for j in range(animals_to_spawn):
+			if instance_idx >= count:
+				break
+				
+			# Jitter position around herd center based on entity ID and animal index
+			var wp := _get_interpolated_pos(pos, species)
+			
+			if animals_to_spawn > 1:
+				var hash_val := _jitter_hash(eid, j, 2)
+				var angle := hash_val * TAU
+				var r := sqrt(_jitter_hash(eid, j, 3)) * radius
+				
+				# Get local tangent vectors to distribute around the point
+				var up := wp.normalized()
+				var right := up.cross(Vector3.FORWARD)
+				if right.length_squared() < 0.001:
+					right = up.cross(Vector3.RIGHT)
+				right = right.normalized()
+				var fwd := up.cross(right).normalized()
+				
+				# We want the radius in world space relative to planet size
+				var planet_scale := GameConfig.PLANET_RADIUS / 100.0
+				wp += (right * cos(angle) + fwd * sin(angle)) * (r * planet_scale)
+				
+			var up := wp.normalized()
+			var sz: float = SPRITE_SIZE.get(species_key, 1.0)
+			
+			# Slight size variation per animal
+			var size_var := 1.0 + (_jitter_hash(eid, j, 4) - 0.5) * 0.2
+			
+			var t := Transform3D()
+			t.origin = wp + up * sz * 0.6 * size_var
+			
+			# Slight color variation per animal
+			var final_col := col
+			var h_shift := (_jitter_hash(eid, j, 5) - 0.5) * 0.05
+			var v_shift := (_jitter_hash(eid, j, 6) - 0.5) * 0.1
+			final_col = Color.from_hsv(
+				wrapf(final_col.h + h_shift, 0.0, 1.0),
+				final_col.s,
+				clampf(final_col.v + v_shift, 0.0, 1.0),
+				final_col.a
+			)
+
+			mm.set_instance_transform(instance_idx, t)
+			mm.set_instance_color(instance_idx, final_col)
+			instance_idx += 1
+
+func _jitter_hash(eid: int, idx: int, channel: int) -> float:
+	var n := eid * 374761393 + idx * 668265263 + channel * 1274126177
+	n = (n ^ (n >> 13)) * 1103515245
+	return float(n & 0xFFFF) / 65535.0
 
 func _get_interpolated_pos(pos: ComPosition, species: ComFaunaSpecies) -> Vector3:
 	if _projector == null or _grid == null:
