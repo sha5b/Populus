@@ -62,17 +62,39 @@ func _process(delta: float) -> void:
 	var speed := sprint_speed if Input.is_key_pressed(KEY_SHIFT) else move_speed
 	
 	if absf(input_fwd) > 0.01 or absf(input_right) > 0.01:
-		var dx := sin(_yaw) * input_fwd + cos(_yaw) * input_right
-		var dy := -cos(_yaw) * input_fwd + sin(_yaw) * input_right
+		var surface_pos := projector.grid_to_sphere(grid_pos.x, grid_pos.y, 0.0)
+		var surface_up := surface_pos.normalized()
 		
-		grid_pos.x = fmod(grid_pos.x + dx * speed * delta + float(grid.width), float(grid.width))
-		grid_pos.y = clampf(grid_pos.y + dy * speed * delta, 0.0, float(grid.height - 1))
-
+		# Compute camera-relative forward and right vectors projected onto the planet's tangent plane
+		var raw_forward := Vector3(sin(_yaw), 0.0, -cos(_yaw))
+		var tangent_forward := (raw_forward - surface_up * raw_forward.dot(surface_up)).normalized()
+		var tangent_right := tangent_forward.cross(surface_up).normalized()
+		
+		var move_dir := (tangent_forward * input_fwd + tangent_right * input_right).normalized()
+		var move_dist := speed * delta
+		var target_pos := surface_pos + move_dir * move_dist
+		
+		var new_frac := _world_to_grid_frac(target_pos)
+		grid_pos = new_frac
+		
 	_update_transform()
 
 
 func set_yaw(y: float) -> void:
 	_yaw = y
+
+
+func _world_to_grid_frac(world_pos: Vector3) -> Vector2:
+	var r := world_pos.length()
+	if r < 0.001:
+		return Vector2.ZERO
+	var lat := asin(clampf(world_pos.y / r, -1.0, 1.0))
+	var lon := atan2(world_pos.z, world_pos.x)
+	if lon < 0.0:
+		lon += TAU
+	var gx := (lon / TAU) * float(grid.width)
+	var gy := ((lat + PI * 0.5) / PI) * float(grid.height)
+	return Vector2(gx, gy)
 
 
 func _update_transform() -> void:

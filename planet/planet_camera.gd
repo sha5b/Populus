@@ -1,7 +1,7 @@
 extends Camera3D
 class_name PlanetCamera
 
-enum Mode { ORBIT, THIRD_PERSON }
+enum Mode { ORBIT, THIRD_PERSON, RTS }
 
 var mode: Mode = Mode.ORBIT
 
@@ -28,6 +28,11 @@ var _third_person_distance: float = 25.0
 var _third_person_look_speed: float = 0.003
 var _mouse_captured: bool = false
 
+var _rts_yaw: float = 0.0
+var _rts_pitch: float = -PI * 0.25 # 45 degrees
+var _rts_distance: float = 80.0
+var _is_rts_panning: bool = false
+
 var projector: PlanetProjector = null
 var grid: TorusGrid = null
 var player_character: Node3D = null # The PlayerCharacter node to follow
@@ -46,15 +51,19 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if mode == Mode.ORBIT:
 		_orbit_input(event)
-	else:
+	elif mode == Mode.THIRD_PERSON:
 		_third_person_input(event)
+	elif mode == Mode.RTS:
+		_rts_input(event)
 
 
 func _process(delta: float) -> void:
 	if mode == Mode.ORBIT:
 		_orbit_process(delta)
-	else:
+	elif mode == Mode.THIRD_PERSON:
 		_third_person_process(delta)
+	elif mode == Mode.RTS:
+		_rts_process(delta)
 
 
 func _toggle_mode() -> void:
@@ -67,7 +76,17 @@ func _toggle_mode() -> void:
 		_third_person_yaw = yaw
 		_third_person_pitch = -0.2
 		_update_third_person_transform()
-		print("Camera: 3rd Person mode (Tab to return to orbit)")
+		print("Camera: 3rd Person mode (Tab to return to RTS)")
+	elif mode == Mode.THIRD_PERSON:
+		mode = Mode.RTS
+		_mouse_captured = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		
+		_rts_yaw = _third_person_yaw
+		if player_character:
+			_target = player_character.global_position
+		_update_rts_transform()
+		print("Camera: RTS mode (Tab to return to orbit)")
 	else:
 		mode = Mode.ORBIT
 		_mouse_captured = false
@@ -170,6 +189,92 @@ func _third_person_process(_delta: float) -> void:
 		player_character.set_yaw(_third_person_yaw)
 		
 	_update_third_person_transform()
+
+
+func _rts_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		match mb.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				_rts_distance = maxf(10.0, _rts_distance - zoom_speed * (_rts_distance * 0.05))
+				_update_rts_transform()
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_rts_distance = minf(300.0, _rts_distance + zoom_speed * (_rts_distance * 0.05))
+				_update_rts_transform()
+			MOUSE_BUTTON_MIDDLE:
+				_is_rotating = mb.pressed
+			MOUSE_BUTTON_RIGHT:
+				_is_rts_panning = mb.pressed
+
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		if _is_rotating:
+			_rts_yaw -= mm.relative.x * rotate_speed
+			_update_rts_transform()
+		elif _is_rts_panning:
+			var right := global_transform.basis.x
+			# Pan across the spherical surface
+			var pan_amount := pan_speed * _rts_distance * 0.001
+			_target -= right * mm.relative.x * pan_amount
+			
+			# We want to pan "forward/backward" relative to the camera, which means along the surface tangent
+			var surface_up := _target.normalized()
+			if surface_up.length_squared() < 0.001:
+				surface_up = Vector3.UP
+			var fwd := right.cross(surface_up).normalized()
+			_target += fwd * mm.relative.y * pan_amount
+			_update_rts_transform()
+
+
+func _rts_process(delta: float) -> void:
+	var kb_pan := Vector3.ZERO
+	var pan_amount := pan_speed * _rts_distance * delta * 20.0
+	
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		kb_pan += Vector3.FORWARD
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		kb_pan += Vector3.BACK
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		kb_pan += Vector3.LEFT
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		kb_pan += Vector3.RIGHT
+		
+	if Input.is_key_pressed(KEY_Q):
+		_rts_yaw += rotate_speed * 10.0
+		_update_rts_transform()
+	if Input.is_key_pressed(KEY_E):
+		_rts_yaw -= rotate_speed * 10.0
+		_update_rts_transform()
+
+	if kb_pan.length_squared() > 0.001:
+		var right := global_transform.basis.x
+		var surface_up := _target.normalized()
+		if surface_up.length_squared() < 0.001:
+			surface_up = Vector3.UP
+		var fwd := right.cross(surface_up).normalized()
+		
+		# Map keyboard 2D to surface tangent plane
+		var final_pan := right * kb_pan.x + fwd * -kb_pan.z
+		_target += final_pan * pan_amount
+		_update_rts_transform()
+
+
+func _update_rts_transform() -> void:
+	var surface_up := _target.normalized()
+	if surface_up.length_squared() < 0.001:
+		surface_up = Vector3.UP
+		
+	var raw_forward := Vector3(sin(_rts_yaw), 0.0, -cos(_rts_yaw))
+	var tangent_forward := (raw_forward - surface_up * raw_forward.dot(surface_up)).normalized()
+	
+	# Isometric angle (fixed 45 degrees down)
+	var pitched_forward := tangent_forward * cos(_rts_pitch) + surface_up * sin(_rts_pitch)
+	pitched_forward = pitched_forward.normalized()
+
+	var cam_pos := _target - pitched_forward * _rts_distance
+	
+	global_position = cam_pos
+	look_at(_target, surface_up)
 
 
 func _update_third_person_transform() -> void:
